@@ -4,11 +4,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"regexp"
-	"strings"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
+	"github.com/go-chi/chi/v5"
 )
 
 const (
@@ -16,38 +15,29 @@ const (
 	shortLinkRegex = "^[/][a-zA-Z]+$"
 )
 
-func Webhook(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		handleGetRequest(w, r)
-	case http.MethodPost:
-		handlePostRequest(w, r)
-	default:
+func Webhook() *chi.Mux {
+
+	router := chi.NewRouter()
+
+	router.Get("/{id}", handleGetRequest)
+	router.Post("/", handlePostRequest)
+	router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
-	}
+	})
+	return router
 }
 
 func handleGetRequest(w http.ResponseWriter, r *http.Request) {
-	match, err := regexp.MatchString(shortLinkRegex, r.URL.Path)
+	id := chi.URLParam(r, "id")
+	link := (*storage.GetStorage())[id]
 
-	if err != nil {
-		sendError(w, incorectData, http.StatusBadRequest)
-		return
-	}
-
-	if match {
-		st := strings.Replace(r.URL.Path, "/", "", -1)
-		link := (*storage.GetStorage())[st]
-
-		if link == "" {
-			sendError(w, incorectData, http.StatusBadRequest)
-		}
-
-		w.Header().Set("Location", link)
-		w.WriteHeader(http.StatusTemporaryRedirect)
-	} else {
+	if link == "" {
 		sendError(w, incorectData, http.StatusBadRequest)
 	}
+
+	w.Header().Set("Location", link)
+	w.WriteHeader(http.StatusTemporaryRedirect)
+	w.Write([]byte(link))
 }
 
 func handlePostRequest(w http.ResponseWriter, r *http.Request) {

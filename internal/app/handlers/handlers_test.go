@@ -1,47 +1,50 @@
 package handlers
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
+	"github.com/go-resty/resty/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestHandleGetRequestFaill(t *testing.T) {
+
+	server := httptest.NewServer(Webhook())
+	defer server.Close()
+
+	client := resty.New()
+
+	resp, _ := client.R().Get(server.URL + "/fdfd")
+
 	expected := "Incorrect Data"
-	req, err := http.NewRequest("GET", "/test", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
 
-	recorder := httptest.NewRecorder()
-	handler := http.HandlerFunc(handleGetRequest)
-
-	handler.ServeHTTP(recorder, req)
-
-	assert.Equal(t, recorder.Code, http.StatusBadRequest)
-	assert.Equal(t, strings.TrimRight(recorder.Body.String(), "\n"), expected)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+	assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
 
 }
 
 func TestHandleGetRequestSuccess(t *testing.T) {
-	expected := "localHost:8080"
+	expected := "https://practicum.yandex.ru"
+
+	server := httptest.NewServer(Webhook())
+	defer server.Close()
+
 	storage.Init()
-	(*storage.GetStorage())["FHDds"] = "localHost:8080"
+	(*storage.GetStorage())["FHDds"] = "https://practicum.yandex.ru"
 
-	req, err := http.NewRequest("GET", "/FHDds", nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	client := resty.New()
 
-	recorder := httptest.NewRecorder()
-	handler := http.HandlerFunc(handleGetRequest)
+	client.SetRedirectPolicy(resty.NoRedirectPolicy())
 
-	handler.ServeHTTP(recorder, req)
+	resp, _ := client.R().Get(server.URL + "/FHDds")
 
-	assert.Equal(t, http.StatusTemporaryRedirect, recorder.Code)
-	assert.Equal(t, expected, strings.TrimRight(recorder.Header()["Location"][0], "\n"))
+	fmt.Println(resp.StatusCode())
+
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode())
+	assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
 }
