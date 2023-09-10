@@ -15,7 +15,5 @@ func main() {
 }
 
 func run() error {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/", handlers.Webhook)
-	return http.ListenAndServe(`:8080`, mux)
+	return http.ListenAndServe(`:8080`, handlers.Webhook())
 }
