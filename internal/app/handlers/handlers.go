@@ -5,14 +5,14 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
 	"github.com/go-chi/chi/v5"
 )
 
 const (
-	incorectData   = "Incorrect Data"
-	shortLinkRegex = "^[/][a-zA-Z]+$"
+	incorectData = "Incorrect Data"
 )
 
 func Webhook() *chi.Mux {
@@ -21,6 +21,9 @@ func Webhook() *chi.Mux {
 
 	router.Get("/{id}", handleGetRequest)
 	router.Post("/", handlePostRequest)
+	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
+		sendError(w, incorectData, http.StatusBadRequest)
+	})
 	router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
 	})
@@ -51,12 +54,18 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
 		return
 	}
+
+	if len(body) == 0 {
+		sendError(w, incorectData, http.StatusBadRequest)
+		return
+	}
+
 	link := string(body)
 	shortID := urlgenerator.CreateShortLink()
 	(*storage.GetStorage())[shortID] = link
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("http://localhost:8080/%s", shortID)))
+	w.Write([]byte(fmt.Sprintf("%s/%s", configs.ServerConfig.RedirectHost, shortID)))
 }
 
 func sendError(w http.ResponseWriter, message string, statusCode int) {

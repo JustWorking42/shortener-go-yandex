@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -12,39 +11,117 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestHandleGetRequestFaill(t *testing.T) {
+func TestWebhook(t *testing.T) {
 
-	server := httptest.NewServer(Webhook())
-	defer server.Close()
+	tests := []struct {
+		name             string
+		url              string
+		preConfig        func()
+		additionalAssert func(resp *resty.Response, expected string)
+		expected         string
+		statusCode       int
+		methodType       string
+		requestBody      []byte
+	}{
+		{
+			name:       "GetFail",
+			url:        "/fdfd",
+			expected:   "Incorrect Data",
+			statusCode: http.StatusBadRequest,
+			additionalAssert: func(resp *resty.Response, expected string) {
+				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
+			},
+			methodType: http.MethodGet,
+		},
+		{
+			name:       "GetSuccess",
+			url:        "/FHDds",
+			expected:   "https://practicum.yandex.ru",
+			statusCode: http.StatusTemporaryRedirect,
+			additionalAssert: func(resp *resty.Response, expected string) {
+				assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
+			},
+			preConfig: func() {
+				storage.Init()
+				(*storage.GetStorage())["FHDds"] = "https://practicum.yandex.ru"
+			},
+			methodType: http.MethodGet,
+		},
+		{
+			name:       "NotFound",
+			url:        "/df/sa/fsdf/asd",
+			expected:   "Incorrect Data",
+			statusCode: http.StatusBadRequest,
+			additionalAssert: func(resp *resty.Response, expected string) {
+				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
+			},
+			methodType: http.MethodGet,
+		},
+		{
+			name:       "MethodNotAllowed",
+			url:        "/",
+			expected:   "Incorrect Data",
+			statusCode: http.StatusBadRequest,
+			additionalAssert: func(resp *resty.Response, expected string) {
+				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
+			},
+			methodType: http.MethodGet,
+		},
+		{
+			name:       "PostSuccess",
+			url:        "/",
+			statusCode: http.StatusCreated,
+			additionalAssert: func(resp *resty.Response, _ string) {
+				assert.Equal(t, "text/plain", resp.Header().Get("Content-Type"))
+				assert.Regexp(t, "^[/][a-zA-Z]+$", string(resp.Body()))
+			},
+			requestBody: []byte("https://practicum.yandex.ru"),
+			methodType:  http.MethodPost,
+			preConfig: func() {
+				storage.Init()
+			},
+		},
+		{
+			name:       "PostFailEmptyBody",
+			url:        "/",
+			expected:   "Incorrect Data",
+			statusCode: http.StatusBadRequest,
+			additionalAssert: func(resp *resty.Response, expected string) {
+				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
+			},
+			requestBody: []byte{},
+			methodType:  http.MethodPost,
+			preConfig: func() {
+				storage.Init()
+			},
+		},
+	}
 
-	client := resty.New()
+	for _, test := range tests {
 
-	resp, _ := client.R().Get(server.URL + "/fdfd")
+		t.Run(test.name, func(t *testing.T) {
+			if test.preConfig != nil {
+				test.preConfig()
+			}
+			server := httptest.NewServer(Webhook())
+			defer server.Close()
 
-	expected := "Incorrect Data"
+			client := resty.New()
+			client.SetRedirectPolicy(resty.NoRedirectPolicy())
 
-	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
-	assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
+			var resp *resty.Response
 
-}
+			if test.methodType == http.MethodGet {
+				resp, _ = client.R().Get(server.URL + test.url)
+			} else if test.methodType == http.MethodPost {
+				resp, _ = client.R().SetBody(test.requestBody).Post(server.URL + test.url)
+			}
 
-func TestHandleGetRequestSuccess(t *testing.T) {
-	expected := "https://practicum.yandex.ru"
+			assert.Equal(t, test.statusCode, resp.StatusCode())
 
-	server := httptest.NewServer(Webhook())
-	defer server.Close()
-
-	storage.Init()
-	(*storage.GetStorage())["FHDds"] = "https://practicum.yandex.ru"
-
-	client := resty.New()
-
-	client.SetRedirectPolicy(resty.NoRedirectPolicy())
-
-	resp, _ := client.R().Get(server.URL + "/FHDds")
-
-	fmt.Println(resp.StatusCode())
-
-	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode())
-	assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
+			if test.additionalAssert != nil {
+				test.additionalAssert(resp, test.expected)
+			}
+		})
+	}
 }
