@@ -3,6 +3,7 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
@@ -32,7 +33,14 @@ func Webhook() *chi.Mux {
 
 func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	link := (*storage.GetStorage())[id]
+	storageMap, err := storage.GetStorage()
+
+	if err != nil {
+		log.Print(err)
+		sendError(w, incorectData, http.StatusBadRequest)
+	}
+
+	link := (*storageMap)[id]
 
 	if link == "" {
 		sendError(w, incorectData, http.StatusBadRequest)
@@ -40,7 +48,6 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Location", link)
 	w.WriteHeader(http.StatusTemporaryRedirect)
-	w.Write([]byte(link))
 }
 
 func handlePostRequest(w http.ResponseWriter, r *http.Request) {
@@ -49,6 +56,12 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body, err := io.ReadAll(r.Body)
+
+	defer func() {
+		if err := r.Body.Close(); err != nil {
+			log.Printf("Error closing response body")
+		}
+	}()
 
 	if err != nil {
 		sendError(w, incorectData, http.StatusBadRequest)
@@ -62,10 +75,19 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 
 	link := string(body)
 	shortID := urlgenerator.CreateShortLink()
-	(*storage.GetStorage())[shortID] = link
+
+	storageMap, err := storage.GetStorage()
+
+	if err != nil {
+		log.Print(err)
+		sendError(w, incorectData, http.StatusBadRequest)
+	}
+
+	(*storageMap)[shortID] = link
+
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("%s/%s", configs.ServerConfig.RedirectHost, shortID)))
+	w.Write([]byte(fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID)))
 }
 
 func sendError(w http.ResponseWriter, message string, statusCode int) {

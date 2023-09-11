@@ -32,6 +32,10 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
 			},
 			methodType: http.MethodGet,
+			preConfig: func() {
+				err := storage.Init()
+				assert.NoError(t, err)
+			},
 		},
 		{
 			name:       "GetSuccess",
@@ -42,8 +46,13 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
 			},
 			preConfig: func() {
-				storage.Init()
-				(*storage.GetStorage())["FHDds"] = "https://practicum.yandex.ru"
+				err := storage.Init()
+				assert.NoError(t, err)
+
+				storageMap, err := storage.GetStorage()
+				assert.NoError(t, err)
+
+				(*storageMap)["FHDds"] = "https://practicum.yandex.ru"
 			},
 			methodType: http.MethodGet,
 		},
@@ -78,7 +87,8 @@ func TestWebhook(t *testing.T) {
 			requestBody: []byte("https://practicum.yandex.ru"),
 			methodType:  http.MethodPost,
 			preConfig: func() {
-				storage.Init()
+				err := storage.Init()
+				assert.NoError(t, err)
 			},
 		},
 		{
@@ -92,7 +102,8 @@ func TestWebhook(t *testing.T) {
 			requestBody: []byte{},
 			methodType:  http.MethodPost,
 			preConfig: func() {
-				storage.Init()
+				err := storage.Init()
+				assert.NoError(t, err)
 			},
 		},
 	}

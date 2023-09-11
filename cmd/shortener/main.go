@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
@@ -9,13 +10,19 @@ import (
 )
 
 func main() {
-	storage.Init()
-	configs.ParseFlags()
+	if err := storage.Init(); err != nil {
+		log.Fatalf("Server storage init err: %v err", err)
+	}
+
+	if err := configs.ParseFlags(); err != nil {
+		log.Fatalf("Parse flags err: %v err", err)
+	}
+
 	if err := run(); err != nil {
-		panic(err)
+		log.Fatalf("Server closed: %v err", err)
 	}
 }
 
 func run() error {
-	return http.ListenAndServe(configs.ServerConfig.ServerAdr, handlers.Webhook())
+	return http.ListenAndServe(configs.GetServerConfig().ServerAdr, handlers.Webhook())
 }

@@ -2,6 +2,7 @@ package configs
 
 import (
 	"flag"
+	"os"
 )
 
 type Config struct {
@@ -9,10 +10,24 @@ type Config struct {
 	RedirectHost string
 }
 
-var ServerConfig Config
+var serverConfig Config
 
-func ParseFlags() {
-	flag.StringVar(&ServerConfig.ServerAdr, "a", ":8080", "")
-	flag.StringVar(&ServerConfig.RedirectHost, "b", "http://localhost:8080", "")
+func GetServerConfig() *Config {
+	return &serverConfig
+}
+
+func ParseFlags() error {
+	os.Environ()
+	flag.StringVar(&serverConfig.ServerAdr, "a", ":8080", "")
+	flag.StringVar(&serverConfig.RedirectHost, "b", "http://localhost:8080", "")
 	flag.Parse()
+
+	if serverAdress := os.Getenv("SERVER_ADDRESS"); serverAdress != "" {
+		serverConfig.ServerAdr = serverAdress
+	}
+
+	if redirectHost := os.Getenv("RUN_ADDR"); redirectHost != "" {
+		serverConfig.RedirectHost = redirectHost
+	}
+	return nil
 }
