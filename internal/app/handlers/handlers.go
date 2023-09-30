@@ -7,6 +7,7 @@ import (
 	"net/http"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
 	"github.com/go-chi/chi/v5"
@@ -20,8 +21,8 @@ func Webhook() *chi.Mux {
 
 	router := chi.NewRouter()
 
-	router.Get("/{id}", handleGetRequest)
-	router.Post("/", handlePostRequest)
+	router.Get("/{id}", logger.RequestLogging(logger.ResponseLogging(handleGetRequest)))
+	router.Post("/", logger.RequestLogging(logger.ResponseLogging(handlePostRequest)))
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
 	})
@@ -40,9 +41,9 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
 	}
 
-	link := (*storageMap)[id]
+	link, ok := (*storageMap)[id]
 
-	if link == "" {
+	if !ok {
 		sendError(w, incorectData, http.StatusBadRequest)
 	}
 
