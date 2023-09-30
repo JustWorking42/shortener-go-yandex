@@ -6,6 +6,7 @@ import (
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/handlers"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
@@ -16,6 +17,10 @@ func main() {
 
 	if err := configs.ParseFlags(); err != nil {
 		log.Fatalf("Parse flags err: %v err", err)
+	}
+
+	if err := logger.Init(configs.GetServerConfig().LogLevel); err != nil {
+		log.Fatalf("Init logger err: %v err", err)
 	}
 
 	if err := run(); err != nil {
