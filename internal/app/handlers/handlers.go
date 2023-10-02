@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/compression"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
@@ -23,10 +24,42 @@ const (
 func Webhook() *chi.Mux {
 
 	router := chi.NewRouter()
-
-	router.Get("/{id}", logger.RequestLogging(logger.ResponseLogging(handleGetRequest)))
-	router.Post("/", logger.RequestLogging(logger.ResponseLogging(handlePostRequest)))
-	router.Post("/api/shorten", logger.RequestLogging(logger.ResponseLogging(handleShortenPost)))
+	router.Get(
+		"/{id}",
+		compression.GzipRequestMiddleware(
+			logger.RequestLogging(
+				logger.ResponseLogging(
+					compression.GzipResponseMiddleware(
+						handleGetRequest,
+					),
+				),
+			),
+		),
+	)
+	router.Post(
+		"/",
+		compression.GzipRequestMiddleware(
+			logger.RequestLogging(
+				logger.ResponseLogging(
+					compression.GzipResponseMiddleware(
+						handlePostRequest,
+					),
+				),
+			),
+		),
+	)
+	router.Post(
+		"/api/shorten",
+		compression.GzipRequestMiddleware(
+			logger.RequestLogging(
+				logger.ResponseLogging(
+					compression.GzipResponseMiddleware(
+						handleShortenPost,
+					),
+				),
+			),
+		),
+	)
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, incorectData, http.StatusBadRequest)
 	})
@@ -103,7 +136,7 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 
 	defer func() {
 		if err := r.Body.Close(); err != nil {
-			log.Printf("Error closing response body")
+			logger.Log.Sugar().Errorf("Error closing response body %v", err)
 		}
 	}()
 
@@ -123,7 +156,7 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 	storageMap, err := storage.GetStorage()
 
 	if err != nil {
-		log.Print(err)
+		logger.Log.Sugar().Error(err)
 		sendError(w, incorectData, http.StatusBadRequest)
 	}
 
