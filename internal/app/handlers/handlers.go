@@ -2,9 +2,9 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/compression"
@@ -61,10 +61,10 @@ func Webhook() *chi.Mux {
 		),
 	)
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
 	})
 	router.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, errors.New("MethodNotFound"), incorectData, http.StatusBadRequest)
 	})
 	return router
 }
@@ -74,99 +74,92 @@ func handleShortenPost(w http.ResponseWriter, r *http.Request) {
 	var shortURL models.RequestShotenerURL
 
 	if err := json.NewDecoder(r.Body).Decode(&shortURL); err != nil {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
 		return
 	}
 
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			log.Printf("Error closing response body")
-		}
-	}()
+	defer r.Body.Close()
+
+	if shortURL.URL == "" {
+		sendError(w, errors.New("IncorectBody"), incorectData, http.StatusBadRequest)
+		return
+	}
 
 	link := shortURL.URL
 	shortID := urlgenerator.CreateShortLink()
 
-	storageMap, err := storage.GetStorage()
+	savedURL := storage.NewSavedURL(shortID, link)
+
+	err := storage.Save(*savedURL)
 
 	if err != nil {
-		log.Print(err)
-		sendError(w, incorectData, http.StatusBadRequest)
+		logger.Log.Sugar().Error(err)
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
 	}
-
-	(*storageMap)[shortID] = link
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	response := models.ResponseShortURL{
-		Result: fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID),
-	}
+	response := models.NewResponseShortURL(
+		fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID),
+	)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
 		return
 	}
 }
 
 func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	storageMap, err := storage.GetStorage()
+	savedURL, err := storage.Get(id)
 
 	if err != nil {
-		log.Print(err)
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
 	}
 
-	link, ok := (*storageMap)[id]
-
-	if !ok {
-		sendError(w, incorectData, http.StatusBadRequest)
-	}
-
-	w.Header().Set("Location", link)
+	w.Header().Set("Location", savedURL.OriginalURL)
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
 func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
 		return
 	}
 	body, err := io.ReadAll(r.Body)
 
-	defer func() {
-		if err := r.Body.Close(); err != nil {
-			logger.Log.Sugar().Errorf("Error closing response body %v", err)
-		}
-	}()
+	defer r.Body.Close()
 
 	if err != nil {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
 		return
 	}
 
 	if len(body) == 0 {
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, errors.New("body lenth is 0"), incorectData, http.StatusBadRequest)
 		return
 	}
 
 	link := string(body)
 	shortID := urlgenerator.CreateShortLink()
 
-	storageMap, err := storage.GetStorage()
+	savedURL := storage.NewSavedURL(shortID, link)
+
+	err = storage.Save(*savedURL)
 
 	if err != nil {
-		logger.Log.Sugar().Error(err)
-		sendError(w, incorectData, http.StatusBadRequest)
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
 	}
-
-	(*storageMap)[shortID] = link
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID)))
 }
 
-func sendError(w http.ResponseWriter, message string, statusCode int) {
+func sendError(w http.ResponseWriter, err error, message string, statusCode int) {
+	logger.Log.Sugar().Error(err)
 	http.Error(w, message, statusCode)
 }
