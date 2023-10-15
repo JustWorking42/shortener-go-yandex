@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/http"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/compression"
-	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
@@ -21,45 +21,34 @@ const (
 	incorectData = "Incorrect Data"
 )
 
-func Webhook() *chi.Mux {
+func Webhook(app *app.App) *chi.Mux {
 
 	router := chi.NewRouter()
-	router.Get(
-		"/{id}",
-		compression.GzipRequestMiddleware(
-			logger.RequestLogging(
-				logger.ResponseLogging(
-					compression.GzipResponseMiddleware(
-						handleGetRequest,
-					),
-				),
-			),
-		),
-	)
-	router.Post(
-		"/",
-		compression.GzipRequestMiddleware(
-			logger.RequestLogging(
-				logger.ResponseLogging(
-					compression.GzipResponseMiddleware(
-						handlePostRequest,
-					),
-				),
-			),
-		),
-	)
-	router.Post(
-		"/api/shorten",
-		compression.GzipRequestMiddleware(
-			logger.RequestLogging(
-				logger.ResponseLogging(
-					compression.GzipResponseMiddleware(
-						handleShortenPost,
-					),
-				),
-			),
-		),
-	)
+
+	handleGetRequest := func(w http.ResponseWriter, r *http.Request) {
+		handleGetRequest(app, w, r)
+	}
+
+	handlePostRequest := func(w http.ResponseWriter, r *http.Request) {
+		handlePostRequest(app, w, r)
+	}
+
+	handleShortenPost := func(w http.ResponseWriter, r *http.Request) {
+		handleShortenPost(app, w, r)
+	}
+
+	pingDB := func(w http.ResponseWriter, r *http.Request) {
+		pingDB(app, w, r)
+	}
+
+	router.Get("/{id}", combinedMiddleware(handleGetRequest))
+
+	router.Post("/", combinedMiddleware(handlePostRequest))
+
+	router.Post("/api/shorten", combinedMiddleware(handleShortenPost))
+
+	router.Get("/ping", logger.RequestLogging(logger.ResponseLogging(pingDB)))
+
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
 	})
@@ -69,7 +58,7 @@ func Webhook() *chi.Mux {
 	return router
 }
 
-func handleShortenPost(w http.ResponseWriter, r *http.Request) {
+func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	var shortURL models.RequestShotenerURL
 
@@ -90,7 +79,7 @@ func handleShortenPost(w http.ResponseWriter, r *http.Request) {
 
 	savedURL := storage.NewSavedURL(shortID, link)
 
-	err := storage.Save(*savedURL)
+	err := app.Storage.Save(app.Context, *savedURL)
 
 	if err != nil {
 		logger.Log.Sugar().Error(err)
@@ -102,7 +91,7 @@ func handleShortenPost(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 
 	response := models.NewResponseShortURL(
-		fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID),
+		fmt.Sprintf("%s/%s", app.RedirectHost, shortID),
 	)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -110,9 +99,9 @@ func handleShortenPost(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleGetRequest(w http.ResponseWriter, r *http.Request) {
+func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	savedURL, err := storage.Get(id)
+	savedURL, err := app.Storage.Get(app.Context, id)
 
 	if err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -123,7 +112,7 @@ func handleGetRequest(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func handlePostRequest(w http.ResponseWriter, r *http.Request) {
+func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
 		return
@@ -147,7 +136,7 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 
 	savedURL := storage.NewSavedURL(shortID, link)
 
-	err = storage.Save(*savedURL)
+	err = app.Storage.Save(app.Context, *savedURL)
 
 	if err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -156,10 +145,29 @@ func handlePostRequest(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("%s/%s", configs.GetServerConfig().RedirectHost, shortID)))
+	w.Write([]byte(fmt.Sprintf("%s/%s", app.RedirectHost, shortID)))
+}
+
+func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
+	err := app.Storage.Ping(app.Context)
+	if err != nil {
+		sendError(w, err, "", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
 }
 
 func sendError(w http.ResponseWriter, err error, message string, statusCode int) {
 	logger.Log.Sugar().Error(err)
 	http.Error(w, message, statusCode)
+}
+
+func combinedMiddleware(h http.HandlerFunc) http.HandlerFunc {
+	return compression.GzipRequestMiddleware(
+		logger.RequestLogging(
+			logger.ResponseLogging(
+				compression.GzipResponseMiddleware(h),
+			),
+		),
+	)
 }
