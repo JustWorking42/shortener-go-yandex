@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
-	"github.com/jackc/pgx/v4/pgxpool"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type PostgresStorage struct {
@@ -12,7 +12,7 @@ type PostgresStorage struct {
 }
 
 func NewPostgresStorage(ctx context.Context, connString string) (*PostgresStorage, error) {
-	db, err := pgxpool.Connect(ctx, connString)
+	db, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return nil, err
 	}
@@ -21,7 +21,13 @@ func NewPostgresStorage(ctx context.Context, connString string) (*PostgresStorag
 }
 
 func (s *PostgresStorage) Init(ctx context.Context) error {
-	return nil
+	_, err := s.db.Exec(ctx, `
+		CREATE TABLE IF NOT EXISTS urls (
+			short_url TEXT PRIMARY KEY,
+			original_url TEXT NOT NULL
+		)
+	`)
+	return err
 }
 
 func (s *PostgresStorage) Ping(ctx context.Context) error {
@@ -29,9 +35,25 @@ func (s *PostgresStorage) Ping(ctx context.Context) error {
 }
 
 func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) error {
-	return nil
+	sqlRequest := `INSERT INTO urls (short_url, original_url)
+	VALUES ($1, $2)
+	ON CONFLICT (short_url) DO NOTHING
+`
+	_, err := s.db.Exec(ctx, sqlRequest, savedURL.ShortURL, savedURL.OriginalURL)
+	return err
 }
 
 func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
-	return storage.SavedURL{}, nil
+	sqlRequest := `SELECT original_url
+	FROM urls
+	WHERE short_url = $1
+`
+	row := s.db.QueryRow(ctx, sqlRequest, key)
+	var originalURL string
+	err := row.Scan(&originalURL)
+	if err != nil {
+		return storage.SavedURL{}, err
+	}
+
+	return storage.SavedURL{ShortURL: key, OriginalURL: originalURL}, nil
 }
