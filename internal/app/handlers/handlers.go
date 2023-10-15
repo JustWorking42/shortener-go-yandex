@@ -79,7 +79,7 @@ func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	savedURL := storage.NewSavedURL(shortID, link)
 
-	err := app.Storage.Save(app.Context, *savedURL)
+	err := app.Storage.Save(r.Context(), *savedURL)
 
 	if err != nil {
 		logger.Log.Sugar().Error(err)
@@ -101,7 +101,7 @@ func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
-	savedURL, err := app.Storage.Get(app.Context, id)
+	savedURL, err := app.Storage.Get(r.Context(), id)
 
 	if err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -136,7 +136,7 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	savedURL := storage.NewSavedURL(shortID, link)
 
-	err = app.Storage.Save(app.Context, *savedURL)
+	err = app.Storage.Save(r.Context(), *savedURL)
 
 	if err != nil {
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -149,7 +149,7 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 }
 
 func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
-	err := app.Storage.Ping(app.Context)
+	err := app.Storage.Ping(r.Context())
 	if err != nil {
 		sendError(w, err, "", http.StatusInternalServerError)
 		return
