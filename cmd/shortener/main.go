@@ -8,29 +8,31 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/handlers"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
-	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
 func main() {
 
-	if err := configs.ParseFlags(); err != nil {
+	config, err := configs.ParseFlags()
+	if err != nil {
 		logger.Log.Sugar().Fatalf("Parse flags err: %v err", err)
 	}
 
-	if err := storage.Init(); err != nil {
+	app, err := app.CreateApp(context.Background(), *config)
+	if err != nil {
 		logger.Log.Sugar().Fatalf("Server storage init err: %v err", err)
 	}
 
-	if err := logger.Init(configs.GetServerConfig().LogLevel); err != nil {
+	if err := logger.Init(config.LogLevel); err != nil {
 		logger.Log.Sugar().Fatalf("Init logger err: %v err", err)
 	}
 
 	server := http.Server{
-		Addr:    configs.GetServerConfig().ServerAdr,
-		Handler: handlers.Webhook(),
+		Addr:    config.ServerAdr,
+		Handler: handlers.Webhook(app),
 	}
 
 	go func() {

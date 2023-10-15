@@ -1,12 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
@@ -15,6 +17,11 @@ import (
 )
 
 func TestWebhook(t *testing.T) {
+
+	conf, err := configs.ParseFlags()
+	assert.NoError(t, err)
+
+	app, err := app.CreateApp(context.Background(), *conf)
 
 	tests := []struct {
 		name             string
@@ -37,7 +44,6 @@ func TestWebhook(t *testing.T) {
 			},
 			methodType: http.MethodGet,
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -51,13 +57,14 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
 			},
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 
-				storageMap, err := storage.GetStorage()
 				assert.NoError(t, err)
-
-				(*storageMap)["FHDds"] = "https://practicum.yandex.ru"
+				err := app.Storage.Save(app.Context, storage.SavedURL{
+					ShortURL:    "FHDds",
+					OriginalURL: "https://practicum.yandex.ru",
+				})
+				assert.NoError(t, err)
 			},
 			methodType: http.MethodGet,
 		},
@@ -74,13 +81,7 @@ func TestWebhook(t *testing.T) {
 				"Accept-Encoding": "gzip",
 			},
 			preConfig: func() {
-				err := storage.Init()
-				assert.NoError(t, err)
 
-				storageMap, err := storage.GetStorage()
-				assert.NoError(t, err)
-
-				(*storageMap)["FHDds"] = "https://practicum.yandex.ru"
 			},
 			methodType: http.MethodGet,
 		},
@@ -111,12 +112,11 @@ func TestWebhook(t *testing.T) {
 			additionalAssert: func(resp *resty.Response, _ string) {
 				assert.Equal(t, "text/plain", resp.Header().Get("Content-Type"))
 				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
-				assert.Regexp(t, "^[/][a-zA-Z]+$", string(resp.Body()))
+				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", string(resp.Body()))
 			},
 			requestBody: []byte("https://practicum.yandex.ru"),
 			methodType:  http.MethodPost,
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -127,7 +127,7 @@ func TestWebhook(t *testing.T) {
 			additionalAssert: func(resp *resty.Response, _ string) {
 				assert.Equal(t, "text/plain", resp.Header().Get("Content-Type"))
 				assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-				assert.Regexp(t, "^[/][a-zA-Z]+$", string(resp.Body()))
+				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", string(resp.Body()))
 			},
 			requestBody: []byte("https://practicum.yandex.ru"),
 			headers: map[string]string{
@@ -135,7 +135,6 @@ func TestWebhook(t *testing.T) {
 			},
 			methodType: http.MethodPost,
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -150,7 +149,6 @@ func TestWebhook(t *testing.T) {
 			requestBody: []byte{},
 			methodType:  http.MethodPost,
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -163,7 +161,7 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
 				var response models.ResponseShortURL
 				json.Unmarshal(resp.Body(), &response)
-				assert.Regexp(t, "^"+configs.GetServerConfig().RedirectHost+"/[a-zA-Z]+$", response.Result)
+				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", response.Result)
 			},
 			requestBody: []byte(`{"URL": "https://practicum.yandex.ru"}`),
 			methodType:  http.MethodPost,
@@ -171,9 +169,6 @@ func TestWebhook(t *testing.T) {
 				"Accept-Encoding": "gzip",
 			},
 			preConfig: func() {
-				err := configs.ParseFlags()
-				assert.NoError(t, err)
-				err = storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -186,13 +181,12 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
 				var response models.ResponseShortURL
 				json.Unmarshal(resp.Body(), &response)
-				assert.Regexp(t, "^"+configs.GetServerConfig().RedirectHost+"/[a-zA-Z]+$", response.Result)
+				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", response.Result)
 			},
 			requestBody: []byte(`{"URL": "https://practicum.yandex.ru"}`),
 			methodType:  http.MethodPost,
 
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -208,7 +202,6 @@ func TestWebhook(t *testing.T) {
 			requestBody: []byte(`{"invalid": "invalid"}`),
 			methodType:  http.MethodPost,
 			preConfig: func() {
-				err := storage.Init()
 				assert.NoError(t, err)
 			},
 		},
@@ -220,7 +213,7 @@ func TestWebhook(t *testing.T) {
 			if test.preConfig != nil {
 				test.preConfig()
 			}
-			server := httptest.NewServer(Webhook())
+			server := httptest.NewServer(Webhook(app))
 			defer server.Close()
 
 			client := resty.New()
