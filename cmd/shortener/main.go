@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -15,13 +16,14 @@ import (
 )
 
 func main() {
-
+	mainContext, MainCancel := context.WithCancel(context.Background())
+	defer MainCancel()
 	config, err := configs.ParseFlags()
 	if err != nil {
 		logger.Log.Sugar().Fatalf("Parse flags err: %v err", err)
 	}
 
-	app, err := app.CreateApp(context.Background(), *config)
+	app, err := app.CreateApp(mainContext, *config)
 	if err != nil {
 		logger.Log.Sugar().Fatalf("Server storage init err: %v err", err)
 	}
@@ -33,6 +35,9 @@ func main() {
 	server := http.Server{
 		Addr:    config.ServerAdr,
 		Handler: handlers.Webhook(app),
+		BaseContext: func(_ net.Listener) context.Context {
+			return app.Context
+		},
 	}
 
 	go func() {
@@ -48,6 +53,8 @@ func main() {
 	<-exit
 
 	logger.Log.Sugar().Info("Shutting down server")
+
+	MainCancel()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

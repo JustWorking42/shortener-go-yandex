@@ -41,6 +41,10 @@ func Webhook(app *app.App) *chi.Mux {
 		pingDB(app, w, r)
 	}
 
+	handleShortenPostArray := func(w http.ResponseWriter, r *http.Request) {
+		handleShortenPostArray(app, w, r)
+	}
+
 	router.Get("/{id}", combinedMiddleware(handleGetRequest))
 
 	router.Post("/", combinedMiddleware(handlePostRequest))
@@ -48,6 +52,8 @@ func Webhook(app *app.App) *chi.Mux {
 	router.Post("/api/shorten", combinedMiddleware(handleShortenPost))
 
 	router.Get("/ping", logger.RequestLogging(logger.ResponseLogging(pingDB)))
+
+	router.Post("/api/shorten/batch", combinedMiddleware(handleShortenPostArray))
 
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
@@ -146,6 +152,53 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(fmt.Sprintf("%s/%s", app.RedirectHost, shortID)))
+}
+
+func handleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request) {
+
+	var originalURLsArray models.RequestShortenerURLArray
+
+	if err := json.NewDecoder(r.Body).Decode(&originalURLsArray); err != nil {
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
+	}
+
+	defer r.Body.Close()
+
+	var shortURLsArray models.ResponseShortenerURLArray
+	var shortURLsArraySave []storage.SavedURL
+
+	for _, item := range originalURLsArray {
+		if item.URL == "" {
+			sendError(w, errors.New("IncorectBody"), incorectData, http.StatusBadRequest)
+			return
+		}
+		shortURL := urlgenerator.CreateShortLink()
+
+		shortURLsArray = append(
+			shortURLsArray,
+			*models.NewResponseShortenerURLBatch(item.ID, fmt.Sprintf("%s/%s", app.RedirectHost, shortURL)),
+		)
+
+		shortURLsArraySave = append(shortURLsArraySave, *storage.NewSavedURL(shortURL, item.URL))
+
+	}
+
+	err := app.Storage.SaveArray(r.Context(), shortURLsArraySave)
+
+	if err != nil {
+		logger.Log.Sugar().Error(err)
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+
+	if err := json.NewEncoder(w).Encode(shortURLsArray); err != nil {
+		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
+	}
 }
 
 func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {

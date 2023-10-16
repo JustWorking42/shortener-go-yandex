@@ -43,6 +43,35 @@ func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) e
 	return err
 }
 
+func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
+	sqlRequest := `INSERT INTO urls (short_url, original_url)
+	VALUES ($1, $2)
+	ON CONFLICT (short_url) DO NOTHING`
+	tx, err := s.db.Begin(ctx)
+
+	defer tx.Rollback(ctx)
+	if err != nil {
+		return err
+	}
+	_, err = tx.Prepare(ctx, "saveArray", sqlRequest)
+
+	if err != nil {
+		return err
+	}
+	for _, url := range savedUrls {
+		_, err := tx.Exec(ctx, "saveArray", url.ShortURL, url.OriginalURL)
+		if err != nil {
+			tx.Rollback(ctx)
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		tx.Rollback(ctx)
+		return err
+	}
+	return nil
+}
+
 func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	sqlRequest := `SELECT original_url
 	FROM urls
