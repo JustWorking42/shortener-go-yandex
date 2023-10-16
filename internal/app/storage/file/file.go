@@ -52,8 +52,8 @@ func (fs *FileStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (fs *FileStorage) Save(ctx context.Context, model storage.SavedURL) error {
-	data, err := json.Marshal(model)
+func (fs *FileStorage) Save(ctx context.Context, savedURL storage.SavedURL) error {
+	data, err := json.Marshal(savedURL)
 	if err != nil {
 		return err
 	}
@@ -71,6 +71,36 @@ func (fs *FileStorage) Save(ctx context.Context, model storage.SavedURL) error {
 
 	if err := writer.WriteByte('\n'); err != nil {
 		return err
+	}
+
+	return writer.Flush()
+}
+
+func (fs *FileStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	file, err := os.OpenFile(fs.FilePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0666)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+
+	writer := bufio.NewWriter(file)
+
+	for _, url := range savedUrls {
+		data, err := json.Marshal(url)
+		if err != nil {
+			return err
+		}
+
+		if _, err := writer.Write(data); err != nil {
+			return err
+		}
+
+		if err := writer.WriteByte('\n'); err != nil {
+			return err
+		}
 	}
 
 	return writer.Flush()

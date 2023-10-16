@@ -8,6 +8,7 @@ type Storage interface {
 	Init(ctx context.Context) error
 	Ping(ctx context.Context) error
 	Save(ctx context.Context, savedURL SavedURL) error
+	SaveArray(ctx context.Context, savedUrls []SavedURL) error
 	Get(ctx context.Context, key string) (SavedURL, error)
 }
 

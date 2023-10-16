@@ -40,6 +40,20 @@ func (m *MemoryStorage) Save(ctx context.Context, savedURL storage.SavedURL) err
 	return nil
 }
 
+func (m *MemoryStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
+	if m.store == nil {
+		return errors.New("MemoryStorage not initialized")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for _, url := range savedUrls {
+		m.store[url.ShortURL] = url.OriginalURL
+	}
+
+	return nil
+}
+
 func (m *MemoryStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	if m.store == nil {
 		return storage.SavedURL{}, errors.New("MemoryStorage not initialized")
