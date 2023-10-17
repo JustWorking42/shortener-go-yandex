@@ -7,36 +7,33 @@ import (
 	"go.uber.org/zap"
 )
 
-var Log zap.Logger = *zap.NewNop()
-
-func Init(textLevel string) error {
+func CreateLogger(textLevel string) (*zap.Logger, error) {
 	level, err := zap.ParseAtomicLevel(textLevel)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	config := zap.NewDevelopmentConfig()
 	config.Level = level
 	logger, err := config.Build()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	Log = *logger
-	return nil
+	return logger, nil
 }
 
-func RequestLogging(h http.HandlerFunc) http.HandlerFunc {
+func RequestLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
 		h(w, r)
 		duration := time.Since(start)
-		sugar := Log.Sugar()
+		sugar := logger.Sugar()
 		sugar.Infoln("uri", r.RequestURI, "method", r.Method, "duration", duration)
 	}
 }
 
-func ResponseLogging(h http.HandlerFunc) http.HandlerFunc {
+func ResponseLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		responseData := &responseData{}
 		lw := loggingResponseWriter{
@@ -44,7 +41,7 @@ func ResponseLogging(h http.HandlerFunc) http.HandlerFunc {
 			responseData:   responseData,
 		}
 		h(&lw, r)
-		sugar := Log.Sugar()
+		sugar := logger.Sugar()
 		sugar.Infoln("status", responseData.status, "size", responseData.size)
 	}
 }

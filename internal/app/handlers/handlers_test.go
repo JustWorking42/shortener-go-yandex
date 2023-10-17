@@ -16,12 +16,18 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
+//TODO С тестами у меня вообще беда по всему приложение торжественно клянусь
+// за этот спринт переработать тесты и дописать на все недостающие части сервиса
+// Так я не люблю их писать эххххх
+
 func TestWebhook(t *testing.T) {
 
 	conf, err := configs.ParseFlags()
 	assert.NoError(t, err)
 
-	app, err := app.CreateApp(context.Background(), *conf)
+	ctx := context.Background()
+
+	app, err := app.CreateApp(ctx, *conf)
 
 	tests := []struct {
 		name             string
@@ -57,10 +63,9 @@ func TestWebhook(t *testing.T) {
 				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
 			},
 			preConfig: func() {
+				err := app.Storage.Clean(ctx)
 				assert.NoError(t, err)
-
-				assert.NoError(t, err)
-				err := app.Storage.Save(app.Context, storage.SavedURL{
+				_, err = app.Storage.Save(ctx, storage.SavedURL{
 					ShortURL:    "FHDds",
 					OriginalURL: "https://practicum.yandex.ru",
 				})
@@ -81,7 +86,13 @@ func TestWebhook(t *testing.T) {
 				"Accept-Encoding": "gzip",
 			},
 			preConfig: func() {
-
+				err := app.Storage.Clean(ctx)
+				assert.NoError(t, err)
+				_, err = app.Storage.Save(ctx, storage.SavedURL{
+					ShortURL:    "FHDds",
+					OriginalURL: "https://practicum.yandex.ru",
+				})
+				assert.NoError(t, err)
 			},
 			methodType: http.MethodGet,
 		},
@@ -117,6 +128,7 @@ func TestWebhook(t *testing.T) {
 			requestBody: []byte("https://practicum.yandex.ru"),
 			methodType:  http.MethodPost,
 			preConfig: func() {
+				err := app.Storage.Clean(ctx)
 				assert.NoError(t, err)
 			},
 		},
@@ -135,6 +147,7 @@ func TestWebhook(t *testing.T) {
 			},
 			methodType: http.MethodPost,
 			preConfig: func() {
+				err := app.Storage.Clean(ctx)
 				assert.NoError(t, err)
 			},
 		},
@@ -169,6 +182,7 @@ func TestWebhook(t *testing.T) {
 				"Accept-Encoding": "gzip",
 			},
 			preConfig: func() {
+				err := app.Storage.Clean(ctx)
 				assert.NoError(t, err)
 			},
 		},
@@ -187,6 +201,7 @@ func TestWebhook(t *testing.T) {
 			methodType:  http.MethodPost,
 
 			preConfig: func() {
+				err := app.Storage.Clean(ctx)
 				assert.NoError(t, err)
 			},
 		},

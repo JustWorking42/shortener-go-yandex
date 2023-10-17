@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -12,37 +13,35 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/handlers"
-	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 )
 
 func main() {
 	mainContext, MainCancel := context.WithCancel(context.Background())
 	defer MainCancel()
+
 	config, err := configs.ParseFlags()
+
 	if err != nil {
-		logger.Log.Sugar().Fatalf("Parse flags err: %v err", err)
+		log.Fatalf("Parse flags err: %v\n", err)
 	}
 
 	app, err := app.CreateApp(mainContext, *config)
 	if err != nil {
-		logger.Log.Sugar().Fatalf("Server storage init err: %v err", err)
+		log.Fatalf("App init err: %v err", err)
 	}
-
-	if err := logger.Init(config.LogLevel); err != nil {
-		logger.Log.Sugar().Fatalf("Init logger err: %v err", err)
-	}
+	defer app.Storage.Close()
 
 	server := http.Server{
 		Addr:    config.ServerAdr,
 		Handler: handlers.Webhook(app),
 		BaseContext: func(_ net.Listener) context.Context {
-			return app.Context
+			return mainContext
 		},
 	}
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			logger.Log.Sugar().Fatalf("Server closed: %v err", err)
+			app.Logger.Sugar().Fatalf("Server closed: %v err", err)
 		}
 	}()
 
@@ -51,16 +50,14 @@ func main() {
 	signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
 
 	<-exit
-
-	logger.Log.Sugar().Info("Shutting down server")
-
-	MainCancel()
+	app.Logger.Sync()
+	app.Logger.Sugar().Info("Shutting down server")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		logger.Log.Sugar().Fatal("Server forced to shutdown:", err)
+		app.Logger.Sugar().Fatal("Server forced to shutdown:", err)
 	}
 
-	logger.Log.Sugar().Info("Server exiting")
+	app.Logger.Sugar().Info("Server exiting")
 }
