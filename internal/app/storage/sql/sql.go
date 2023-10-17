@@ -22,9 +22,9 @@ func NewPostgresStorage(ctx context.Context, connString string) (*PostgresStorag
 
 func (s *PostgresStorage) Init(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
-		CREATE TABLE IF NOT EXISTS urls (
+		CREATE TABLE IF NOT EXISTS urlsTable (
 			short_url TEXT PRIMARY KEY,
-			original_url TEXT NOT NULL
+			original_url TEXT NOT NULL UNIQUE
 		)
 	`)
 	return err
@@ -34,17 +34,24 @@ func (s *PostgresStorage) Ping(ctx context.Context) error {
 	return s.db.Ping(ctx)
 }
 
-func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) error {
-	sqlRequest := `INSERT INTO urls (short_url, original_url)
-	VALUES ($1, $2)
-	ON CONFLICT (short_url) DO NOTHING
-`
-	_, err := s.db.Exec(ctx, sqlRequest, savedURL.ShortURL, savedURL.OriginalURL)
-	return err
+func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) (string, error) {
+
+	sqlRequest := `INSERT INTO urlsTable (short_url, original_url) VALUES ($1, $2) ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url RETURNING short_url`
+	row := s.db.QueryRow(ctx, sqlRequest, savedURL.ShortURL, savedURL.OriginalURL)
+	var shortURL string
+	err := row.Scan(&shortURL)
+	if err != nil {
+		return "", err
+	}
+	if savedURL.ShortURL != shortURL {
+		return shortURL, storage.ErrURLConflict
+	}
+
+	return "", nil
 }
 
 func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
-	sqlRequest := `INSERT INTO urls (short_url, original_url)
+	sqlRequest := `INSERT INTO urlsTable (short_url, original_url)
 	VALUES ($1, $2)
 	ON CONFLICT (short_url) DO NOTHING`
 	tx, err := s.db.Begin(ctx)
@@ -61,12 +68,10 @@ func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.Sav
 	for _, url := range savedUrls {
 		_, err := tx.Exec(ctx, "saveArray", url.ShortURL, url.OriginalURL)
 		if err != nil {
-			tx.Rollback(ctx)
 			return err
 		}
 	}
 	if err := tx.Commit(ctx); err != nil {
-		tx.Rollback(ctx)
 		return err
 	}
 	return nil
@@ -74,7 +79,7 @@ func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.Sav
 
 func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	sqlRequest := `SELECT original_url
-	FROM urls
+	FROM urlsTable
 	WHERE short_url = $1
 `
 	row := s.db.QueryRow(ctx, sqlRequest, key)
@@ -85,4 +90,17 @@ func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL
 	}
 
 	return storage.SavedURL{ShortURL: key, OriginalURL: originalURL}, nil
+}
+
+func (s *PostgresStorage) Clean(ctx context.Context) error {
+	sqlRequest := `TRUNCATE TABLE urlsTable`
+	_, err := s.db.Exec(ctx, sqlRequest)
+	return err
+}
+
+func (s *PostgresStorage) Close() error {
+	if s.db != nil {
+		s.db.Close()
+	}
+	return nil
 }

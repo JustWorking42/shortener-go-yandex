@@ -8,12 +8,6 @@ type ResponseShortURL struct {
 	Result string `json:"result"`
 }
 
-func NewRequestShotenerURL(url string) *RequestShotenerURL {
-	return &RequestShotenerURL{
-		URL: url,
-	}
-}
-
 func NewResponseShortURL(url string) *ResponseShortURL {
 	return &ResponseShortURL{
 		Result: url,
@@ -28,16 +22,6 @@ type RequestShortenerURLBatch struct {
 type ResponseShortenerURLBatch struct {
 	ID  string `json:"correlation_id"`
 	URL string `json:"short_url"`
-}
-
-type RequestShortenerURLArray []RequestShortenerURLBatch
-type ResponseShortenerURLArray []ResponseShortenerURLBatch
-
-func NewRequestShortenerURLBatch(id string, url string) *RequestShortenerURLBatch {
-	return &RequestShortenerURLBatch{
-		URL: url,
-		ID:  id,
-	}
 }
 
 func NewResponseShortenerURLBatch(id string, url string) *ResponseShortenerURLBatch {

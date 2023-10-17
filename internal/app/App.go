@@ -5,15 +5,18 @@ import (
 	"fmt"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/file"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/memory"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/sql"
+	"go.uber.org/zap"
 )
 
 type App struct {
 	Storage      storage.Storage
-	Context      context.Context
+	Logger       *zap.Logger
+	context      context.Context
 	RedirectHost string
 }
 
@@ -22,9 +25,16 @@ func CreateApp(ctx context.Context, conf configs.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("error creating App %v", err)
 	}
+
+	logger, err := logger.CreateLogger(conf.LogLevel)
+
+	if err != nil {
+		return nil, fmt.Errorf("error creating App %v", err)
+	}
 	return &App{
 		Storage:      storage,
-		Context:      ctx,
+		Logger:       logger,
+		context:      ctx,
 		RedirectHost: conf.RedirectHost,
 	}, nil
 }
