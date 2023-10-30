@@ -28,8 +28,11 @@ func RequestLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 		start := time.Now()
 		h(w, r)
 		duration := time.Since(start)
-		sugar := logger.Sugar()
-		sugar.Infoln("uri", r.RequestURI, "method", r.Method, "duration", duration)
+		logger.Info("request",
+			zap.String("uri", r.RequestURI),
+			zap.String("method", r.Method),
+			zap.Duration("duration", duration),
+		)
 	}
 }
 
@@ -41,8 +44,10 @@ func ResponseLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 			responseData:   responseData,
 		}
 		h(&lw, r)
-		sugar := logger.Sugar()
-		sugar.Infoln("status", responseData.status, "size", responseData.size)
+		logger.Info("response",
+			zap.Int("status", responseData.status),
+			zap.Int("size", responseData.size),
+		)
 	}
 }
 

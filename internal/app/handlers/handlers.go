@@ -9,11 +9,11 @@ import (
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/compression"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/cookie"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
-	"go.uber.org/zap"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -46,15 +46,21 @@ func Webhook(app *app.App) *chi.Mux {
 		handleShortenPostArray(app, w, r)
 	}
 
-	router.Get("/{id}", combinedMiddleware(app.Logger, handleGetRequest))
+	handleGetUserURLs := func(w http.ResponseWriter, r *http.Request) {
+		handleGetUserURLs(app, w, r)
+	}
 
-	router.Post("/", combinedMiddleware(app.Logger, handlePostRequest))
+	router.Get("/{id}", combinedMiddleware(app, handleGetRequest))
 
-	router.Post("/api/shorten", combinedMiddleware(app.Logger, handleShortenPost))
+	router.Post("/", combinedMiddleware(app, handlePostRequest))
+
+	router.Post("/api/shorten", combinedMiddleware(app, handleShortenPost))
 
 	router.Get("/ping", logger.RequestLogging(app.Logger, logger.ResponseLogging(app.Logger, pingDB)))
 
-	router.Post("/api/shorten/batch", combinedMiddleware(app.Logger, handleShortenPostArray))
+	router.Post("/api/shorten/batch", combinedMiddleware(app, handleShortenPostArray))
+
+	router.Get("/api/user/urls", combinedMiddleware(app, handleGetUserURLs))
 
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
@@ -66,6 +72,7 @@ func Webhook(app *app.App) *chi.Mux {
 }
 
 func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 
 	var originalURL models.RequestShotenerURL
 
@@ -86,7 +93,7 @@ func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	link := originalURL.URL
 	shortID := urlgenerator.CreateShortLink()
 
-	savedURL := storage.NewSavedURL(shortID, link)
+	savedURL := storage.NewSavedURL(shortID, link, userID)
 
 	conflictURL, err := app.Storage.Save(r.Context(), *savedURL)
 	statusCode := http.StatusCreated
@@ -116,6 +123,7 @@ func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 }
 
 func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
+
 	id := chi.URLParam(r, "id")
 	savedURL, err := app.Storage.Get(r.Context(), id)
 
@@ -130,6 +138,8 @@ func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 }
 
 func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(cookie.UserID("UserID")).(string)
+
 	if err := r.ParseForm(); err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -154,7 +164,7 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	link := string(body)
 	shortID := urlgenerator.CreateShortLink()
 
-	savedURL := storage.NewSavedURL(shortID, link)
+	savedURL := storage.NewSavedURL(shortID, link, userID)
 
 	conflictURL, err := app.Storage.Save(r.Context(), *savedURL)
 	statusCode := http.StatusCreated
@@ -179,7 +189,7 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 }
 
 func handleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request) {
-
+	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 	var originalURLsSlice []models.RequestShortenerURLBatch
 
 	if err := json.NewDecoder(r.Body).Decode(&originalURLsSlice); err != nil {
@@ -206,7 +216,7 @@ func handleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request
 			*models.NewResponseShortenerURLBatch(item.ID, fmt.Sprintf("%s/%s", app.RedirectHost, shortURL)),
 		)
 
-		shortURLsSliceSave = append(shortURLsSliceSave, *storage.NewSavedURL(shortURL, item.URL))
+		shortURLsSliceSave = append(shortURLsSliceSave, *storage.NewSavedURL(shortURL, item.URL, userID))
 
 	}
 
@@ -242,14 +252,46 @@ func sendError(w http.ResponseWriter, err error, message string, statusCode int)
 	http.Error(w, message, statusCode)
 }
 
-func combinedMiddleware(log *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
-	return compression.GzipRequestMiddleware(
+func combinedMiddleware(app *app.App, h http.HandlerFunc) http.HandlerFunc {
+	return cookie.CookieCheckMiddleware(app, compression.GzipRequestMiddleware(
 		logger.RequestLogging(
-			log,
+			app.Logger,
 			logger.ResponseLogging(
-				log,
+				app.Logger,
 				compression.GzipResponseMiddleware(h),
 			),
 		),
+	),
 	)
+}
+
+func handleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
+
+	userID := r.Context().Value(cookie.UserID("UserID")).(string)
+
+	urls, err := app.Storage.GetByUser(r.Context(), userID)
+	if err != nil {
+		app.Logger.Sugar().Error(err)
+		sendError(w, err, "Failed to get URLs", http.StatusInternalServerError)
+		return
+	}
+
+	if len(urls) == 0 {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+
+	response := make([]map[string]string, len(urls))
+	for i, url := range urls {
+		response[i] = map[string]string{
+			"short_url":    fmt.Sprintf("%s/%s", app.RedirectHost, url.ShortURL),
+			"original_url": url.OriginalURL,
+		}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		app.Logger.Sugar().Error(err)
+		sendError(w, err, "Failed to encode response", http.StatusInternalServerError)
+	}
 }

@@ -177,6 +177,70 @@ func (fs *FileStorage) Clean(ctx context.Context) error {
 	return nil
 }
 
+func (fs *FileStorage) IsUserIDExists(ctx context.Context, userID string) (bool, error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.File == nil {
+		return false, errors.New("file does not open")
+	}
+
+	_, err := fs.File.Seek(0, 0)
+	if err != nil {
+		return false, err
+	}
+
+	scanner := bufio.NewScanner(fs.File)
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), userID) {
+			return true, nil
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return false, err
+	}
+
+	return false, nil
+}
+
+func (fs *FileStorage) GetByUser(ctx context.Context, userID string) ([]storage.SavedURL, error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.File == nil {
+		return nil, errors.New("file does not open")
+	}
+
+	_, err := fs.File.Seek(0, 0)
+	if err != nil {
+		return nil, err
+	}
+
+	scanner := bufio.NewScanner(fs.File)
+	var urls []storage.SavedURL
+	var savedURL storage.SavedURL
+	for scanner.Scan() {
+		if strings.Contains(scanner.Text(), userID) {
+			err := json.Unmarshal(scanner.Bytes(), &savedURL)
+			if err != nil {
+				return nil, err
+			}
+			urls = append(urls, savedURL)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	if len(urls) == 0 {
+		return nil, errors.New("no URLs found for this user")
+	}
+
+	return urls, nil
+}
+
 func (fs *FileStorage) Close() error {
 	if fs.File != nil {
 		return fs.File.Close()
