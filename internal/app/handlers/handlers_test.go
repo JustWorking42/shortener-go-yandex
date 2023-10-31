@@ -3,250 +3,419 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/mocks"
 	"github.com/go-resty/resty/v2"
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 )
 
-//TODO С тестами у меня вообще беда по всему приложение торжественно клянусь
-// за этот спринт переработать тесты и дописать на все недостающие части сервиса
-// Так я не люблю их писать эххххх
-
-func TestWebhook(t *testing.T) {
-
-	conf, err := configs.ParseFlags()
-	assert.NoError(t, err)
+func mockApp(t *testing.T, storage *mocks.MockStorage) *app.App {
+	conf := configs.Config{
+		ServerAdr:       "8080",
+		RedirectHost:    "http://localhost:8080",
+		LogLevel:        "info",
+		FileStoragePath: "/tmp/short-url-db.json",
+		DBAddress:       "",
+	}
 
 	ctx := context.Background()
 
-	app, err := app.CreateApp(ctx, *conf)
+	app, err := app.CreateApp(ctx, conf)
+	assert.NoError(t, err)
 
-	tests := []struct {
-		name             string
-		url              string
-		preConfig        func()
-		additionalAssert func(resp *resty.Response, expected string)
-		expected         string
-		statusCode       int
-		methodType       string
-		requestBody      []byte
-		headers          map[string]string
-	}{
-		{
-			name:       "GetFail",
-			url:        "/fdfd",
-			expected:   "Incorrect Data",
-			statusCode: http.StatusBadRequest,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
-			},
-			methodType: http.MethodGet,
-			preConfig: func() {
-				assert.NoError(t, err)
-			},
-		},
-		{
-			name:       "GetSuccess",
-			url:        "/FHDds",
-			expected:   "https://practicum.yandex.ru",
-			statusCode: http.StatusTemporaryRedirect,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
-				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
-			},
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-				_, err = app.Storage.Save(ctx, storage.SavedURL{
-					ShortURL:    "FHDds",
-					OriginalURL: "https://practicum.yandex.ru",
-				})
-				assert.NoError(t, err)
-			},
-			methodType: http.MethodGet,
-		},
-		{
-			name:       "GetSuccessGzip",
-			url:        "/FHDds",
-			expected:   "https://practicum.yandex.ru",
-			statusCode: http.StatusTemporaryRedirect,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(resp.Header().Get("Location"), "\n"))
-				assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-			},
-			headers: map[string]string{
-				"Accept-Encoding": "gzip",
-			},
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-				_, err = app.Storage.Save(ctx, storage.SavedURL{
-					ShortURL:    "FHDds",
-					OriginalURL: "https://practicum.yandex.ru",
-				})
-				assert.NoError(t, err)
-			},
-			methodType: http.MethodGet,
-		},
-		{
-			name:       "NotFound",
-			url:        "/df/sa/fsdf/asd",
-			expected:   "Incorrect Data",
-			statusCode: http.StatusBadRequest,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
-			},
-			methodType: http.MethodGet,
-		},
-		{
-			name:       "MethodNotAllowed",
-			url:        "/",
-			expected:   "Incorrect Data",
-			statusCode: http.StatusBadRequest,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
-			},
-			methodType: http.MethodGet,
-		},
-		{
-			name:       "PostSuccess",
-			url:        "/",
-			statusCode: http.StatusCreated,
-			additionalAssert: func(resp *resty.Response, _ string) {
-				assert.Equal(t, "text/plain", resp.Header().Get("Content-Type"))
-				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
-				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", string(resp.Body()))
-			},
-			requestBody: []byte("https://practicum.yandex.ru"),
-			methodType:  http.MethodPost,
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-			},
-		},
-		{
-			name:       "PostSuccessGzip",
-			url:        "/",
-			statusCode: http.StatusCreated,
-			additionalAssert: func(resp *resty.Response, _ string) {
-				assert.Equal(t, "text/plain", resp.Header().Get("Content-Type"))
-				assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", string(resp.Body()))
-			},
-			requestBody: []byte("https://practicum.yandex.ru"),
-			headers: map[string]string{
-				"Accept-Encoding": "gzip",
-			},
-			methodType: http.MethodPost,
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-			},
-		},
-		{
-			name:       "PostFailEmptyBody",
-			url:        "/",
-			expected:   "Incorrect Data",
-			statusCode: http.StatusBadRequest,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
-			},
-			requestBody: []byte{},
-			methodType:  http.MethodPost,
-			preConfig: func() {
-				assert.NoError(t, err)
-			},
-		},
-		{
-			name:       "ShortenPostSuccessGzip",
-			url:        "/api/shorten",
-			statusCode: http.StatusCreated,
-			additionalAssert: func(resp *resty.Response, _ string) {
-				assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-				assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-				var response models.ResponseShortURL
-				json.Unmarshal(resp.Body(), &response)
-				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", response.Result)
-			},
-			requestBody: []byte(`{"URL": "https://practicum.yandex.ru"}`),
-			methodType:  http.MethodPost,
-			headers: map[string]string{
-				"Accept-Encoding": "gzip",
-			},
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-			},
-		},
-		{
-			name:       "ShortenPostSucces",
-			url:        "/api/shorten",
-			statusCode: http.StatusCreated,
-			additionalAssert: func(resp *resty.Response, _ string) {
-				assert.Equal(t, "application/json", resp.Header().Get("Content-Type"))
-				assert.Equal(t, "", resp.Header().Get("Content-Encoding"))
-				var response models.ResponseShortURL
-				json.Unmarshal(resp.Body(), &response)
-				assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", response.Result)
-			},
-			requestBody: []byte(`{"URL": "https://practicum.yandex.ru"}`),
-			methodType:  http.MethodPost,
+	app.Storage = storage
 
-			preConfig: func() {
-				err := app.Storage.Clean(ctx)
-				assert.NoError(t, err)
-			},
-		},
+	return app
+}
 
+func TestGetFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Get(gomock.Any(), gomock.Any()).Return(storage.SavedURL{}, errors.New("error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().Get(server.URL + "/nonexistent")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestGetSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockResponse := *storage.NewSavedURL("existent", "dsas", "asda")
+	mockStorage.EXPECT().Get(gomock.Any(), "existent").Return(mockResponse, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	client.SetRedirectPolicy(resty.NoRedirectPolicy())
+	resp, _ := client.R().Get(server.URL + "/existent")
+
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode())
+	assert.Equal(t, "dsas", resp.Header().Get("Location"))
+	assert.NotEqual(t, "gzip", resp.Header().Get("Content-Encoding"))
+}
+
+func TestGetSuccessGone(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockResponse := *storage.NewSavedURL("existent", "dsas", "asda")
+	mockResponse.IsDeleted = true
+	mockStorage.EXPECT().Get(gomock.Any(), "existent").Return(mockResponse, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	client.SetRedirectPolicy(resty.NoRedirectPolicy())
+	resp, _ := client.R().Get(server.URL + "/existent")
+
+	assert.Equal(t, http.StatusGone, resp.StatusCode())
+	assert.NotEqual(t, "gzip", resp.Header().Get("Content-Encoding"))
+}
+
+func TestGetSuccessGzip(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockResponse := *storage.NewSavedURL("existent", "dsas", "asda")
+
+	mockStorage.EXPECT().Get(gomock.Any(), gomock.Any()).Return(mockResponse, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	client.SetRedirectPolicy(resty.NoRedirectPolicy())
+	resp, _ := client.R().SetHeader("Accept-Encoding", "gzip").Get(server.URL + "/existent")
+
+	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode())
+	assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
+}
+
+func TestHandleShortenPostFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("", errors.New("error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`{"URL": "invalid"}`).Post(server.URL + "/api/shorten")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestHandleShortenPostSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("shortID", nil)
+	app := mockApp(t, mockStorage)
+	server := httptest.NewServer(Webhook(app))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`{"URL": "https://valid.com"}`).Post(server.URL + "/api/shorten")
+
+	assert.NoError(t, err)
+	var response models.ResponseShortURL
+	json.Unmarshal(resp.Body(), &response)
+	assert.Regexp(t, "^"+app.RedirectHost+"/[a-zA-Z]+$", response.Result)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+}
+
+func TestHandleShortenPostConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("shortID", storage.ErrURLConflict)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`{"URL": "https://valid.com"}`).Post(server.URL + "/api/shorten")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode())
+}
+
+func TestHandleShortenPostEmptyBody(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	server := httptest.NewServer(Webhook(mockApp(t, mocks.NewMockStorage(ctrl))))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().Post(server.URL + "/api/shorten")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestHandlePostRequestFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("", errors.New("error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`invalid`).Post(server.URL + "/")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestHandlePostRequestSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("shortID", nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody("https://valid.com").Post(server.URL + "/")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+}
+
+func TestHandlePostRequestConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Save(gomock.Any(), gomock.Any()).Return("shortID", storage.ErrURLConflict)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`https://valid.com`).Post(server.URL + "/")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusConflict, resp.StatusCode())
+}
+
+func TestHandlePostRequestEmptyBody(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	server := httptest.NewServer(Webhook(mockApp(t, mocks.NewMockStorage(ctrl))))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().Post(server.URL + "/")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestPingDBFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Ping(gomock.Any()).Return(errors.New("error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().Get(server.URL + "/ping")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestPingDBSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().Ping(gomock.Any()).Return(nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().Get(server.URL + "/ping")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode())
+}
+
+func TestHandleShortenPostArraySuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().SaveArray(gomock.Any(), gomock.Any()).Return(nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, _ := client.R().SetBody(`[{"correlation_id": "1", "original_url": "https://valid.com"}, {"correlation_id": "2", "original_url": "https://valid.com"}]`).Post(server.URL + "/api/shorten/batch")
+
+	assert.Equal(t, http.StatusCreated, resp.StatusCode())
+
+	var expectedMap, responseMap []map[string]interface{}
+	expected := `[
+        {
+            "correlation_id":  "1",
+            "short_url": "shortID"
+        },
+        {
+            "correlation_id":  "2",
+            "short_url": "shortID"
+        }
+    ]`
+	err := json.Unmarshal([]byte(expected), &expectedMap)
+	assert.NoError(t, err)
+	err = json.Unmarshal(resp.Body(), &responseMap)
+	assert.NoError(t, err)
+
+	for i := range expectedMap {
+		for k := range expectedMap[i] {
+			_, ok := responseMap[i][k]
+			assert.True(t, ok, "key %s is missing in %d", k, i)
+		}
+	}
+}
+
+func TestHandleShortenPostArrayFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().SaveArray(gomock.Any(), gomock.Any()).Return(errors.New("error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`[{"correlation_id": "1", "original_url": "invalid"}, {"correlation_id": "2", "original_url": "invalid"}]`).Post(server.URL + "/api/shorten/batch")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestHandleShortenPostArrayConflict(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().SaveArray(gomock.Any(), gomock.Any()).Return(storage.ErrURLConflict)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetBody(`[{"correlation_id": "1", "original_url": "https://valid.com"}]`).Post(server.URL + "/api/shorten/batch")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode())
+}
+
+func TestHandleGetUserURLsNoContent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().GetByUser(gomock.Any(), gomock.Any()).Return([]storage.SavedURL{}, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, _ := client.R().Get(server.URL + "/api/user/urls")
+
+	assert.Equal(t, http.StatusNoContent, resp.StatusCode())
+}
+
+func TestHandleGetUserURLsHasContent(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().GetByUser(gomock.Any(), gomock.Any()).Return([]storage.SavedURL{
 		{
-			name:       "ShortenPostFailInvalidBody",
-			url:        "/api/shorten",
-			expected:   "Incorrect Data",
-			statusCode: http.StatusBadRequest,
-			additionalAssert: func(resp *resty.Response, expected string) {
-				assert.Equal(t, expected, strings.TrimRight(string(resp.Body()), "\n"))
-			},
-			requestBody: []byte(`{"invalid": "invalid"}`),
-			methodType:  http.MethodPost,
-			preConfig: func() {
-				assert.NoError(t, err)
-			},
+			OriginalURL: "https://valid.com",
+			ShortURL:    "shortURL",
+			UserID:      "userID",
+		},
+	}, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, _ := client.R().Get(server.URL + "/api/user/urls")
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode())
+
+	var responseMap []map[string]interface{}
+	err := json.Unmarshal(resp.Body(), &responseMap)
+	assert.NoError(t, err)
+
+	expectedMap := []map[string]interface{}{
+		{
+			"original_url": "https://valid.com",
+			"short_url":    "http://localhost:8080/shortURL",
 		},
 	}
 
-	for _, test := range tests {
+	assert.Equal(t, expectedMap, responseMap)
+}
 
-		t.Run(test.name, func(t *testing.T) {
-			if test.preConfig != nil {
-				test.preConfig()
-			}
-			server := httptest.NewServer(Webhook(app))
-			defer server.Close()
+func TestHandleDeleteURLs(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-			client := resty.New()
-			client.SetRedirectPolicy(resty.NoRedirectPolicy())
+	mockStorage := mocks.NewMockStorage(ctrl)
 
-			var resp *resty.Response
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
 
-			if test.methodType == http.MethodGet {
-				resp, _ = client.R().SetHeaders(test.headers).Get(server.URL + test.url)
-			} else if test.methodType == http.MethodPost {
-				resp, _ = client.R().SetBody(test.requestBody).SetHeaders(test.headers).Post(server.URL + test.url)
-			}
+	client := resty.New()
+	resp, _ := client.R().SetBody(`["url1", "url2"]`).Delete(server.URL + "/api/user/urls")
 
-			assert.Equal(t, test.statusCode, resp.StatusCode())
-
-			if test.additionalAssert != nil {
-				test.additionalAssert(resp, test.expected)
-			}
-		})
-	}
+	assert.Equal(t, http.StatusAccepted, resp.StatusCode())
 }

@@ -3,6 +3,8 @@ package storage
 import (
 	"context"
 	"errors"
+
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 )
 
 type Storage interface {
@@ -13,6 +15,7 @@ type Storage interface {
 	Get(ctx context.Context, key string) (SavedURL, error)
 	IsUserIDExists(ctx context.Context, userID string) (bool, error)
 	GetByUser(ctx context.Context, userID string) ([]SavedURL, error)
+	Delete(ctx context.Context, deleteTaskSlice []models.DeleteTask) error
 	Clean(ctx context.Context) error
 	Close() error
 }
@@ -23,6 +26,7 @@ type SavedURL struct {
 	ShortURL    string `json:"shortUrl"`
 	OriginalURL string `json:"originalUrl"`
 	UserID      string `json:"userID"`
+	IsDeleted   bool
 }
 
 func NewSavedURL(shortURL string, url string, userID string) *SavedURL {
@@ -30,5 +34,6 @@ func NewSavedURL(shortURL string, url string, userID string) *SavedURL {
 		ShortURL:    shortURL,
 		OriginalURL: url,
 		UserID:      userID,
+		IsDeleted:   false,
 	}
 }

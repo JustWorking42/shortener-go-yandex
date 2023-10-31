@@ -3,21 +3,25 @@ package sql
 import (
 	"context"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"go.uber.org/zap"
 )
 
 type PostgresStorage struct {
-	db *pgxpool.Pool
+	db     *pgxpool.Pool
+	logger *zap.Logger
 }
 
-func NewPostgresStorage(ctx context.Context, connString string) (*PostgresStorage, error) {
+func NewPostgresStorage(ctx context.Context, connString string, logger *zap.Logger) (*PostgresStorage, error) {
 	db, err := pgxpool.New(ctx, connString)
 	if err != nil {
 		return nil, err
 	}
 
-	return &PostgresStorage{db: db}, nil
+	return &PostgresStorage{db: db, logger: logger}, nil
 }
 
 func (s *PostgresStorage) Init(ctx context.Context) error {
@@ -25,13 +29,19 @@ func (s *PostgresStorage) Init(ctx context.Context) error {
 		CREATE TABLE IF NOT EXISTS urlsTable (
 			short_url TEXT PRIMARY KEY,
 			original_url TEXT NOT NULL UNIQUE,
-			user_id VARCHAR(32)
+			user_id VARCHAR(32) NOT NULL,
+			is_deleted bool DEFAULT false
 		)
 	`)
 	if err != nil {
+		s.logger.Sugar().Errorf("postgress init error: %v", err)
 		return err
 	}
 	err = s.migration(ctx)
+	if err != nil {
+		s.logger.Sugar().Errorf("postgress migration error: %v", err)
+		return err
+	}
 	return err
 }
 
@@ -49,7 +59,7 @@ func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) (
 	if savedURL.ShortURL != shortURL {
 		return shortURL, storage.ErrURLConflict
 	}
-
+	s.logger.Sugar().Infof("%v is succesfully save", shortURL)
 	return "", nil
 }
 
@@ -77,22 +87,26 @@ func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.Sav
 	if err := tx.Commit(ctx); err != nil {
 		return err
 	}
+
+	s.logger.Sugar().Infof("%v is succesfully save", savedUrls)
 	return nil
 }
 
 func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
-	sqlRequest := `SELECT original_url
+	sqlRequest := `SELECT original_url, is_deleted
 	FROM urlsTable
 	WHERE short_url = $1
 `
 	row := s.db.QueryRow(ctx, sqlRequest, key)
 	var originalURL string
-	err := row.Scan(&originalURL)
+	var isDeleted bool
+	err := row.Scan(&originalURL, &isDeleted)
 	if err != nil {
+		s.logger.Sugar().Errorf("postgress get error: %v", err)
 		return storage.SavedURL{}, err
 	}
 
-	return storage.SavedURL{ShortURL: key, OriginalURL: originalURL}, nil
+	return storage.SavedURL{ShortURL: key, OriginalURL: originalURL, IsDeleted: isDeleted}, nil
 }
 
 func (s *PostgresStorage) Clean(ctx context.Context) error {
@@ -113,6 +127,7 @@ func (s *PostgresStorage) IsUserIDExists(ctx context.Context, userID string) (bo
 	row := s.db.QueryRow(ctx, sqlRequest, userID)
 	var exists bool
 	err := row.Scan(&exists)
+	s.logger.Sugar().Infof("postgress is user exitst: %v", exists)
 	if err != nil {
 		return false, err
 	}
@@ -129,7 +144,7 @@ func (s *PostgresStorage) GetByUser(ctx context.Context, userID string) ([]stora
 	var savedURLs []storage.SavedURL
 	for rows.Next() {
 		var savedURL storage.SavedURL
-		err = rows.Scan(&savedURL.ShortURL, &savedURL.OriginalURL, &savedURL.UserID)
+		err = rows.Scan(&savedURL.ShortURL, &savedURL.OriginalURL, &savedURL.UserID, &savedURL.IsDeleted)
 		if err != nil {
 			return nil, err
 		}
@@ -143,10 +158,42 @@ func (s *PostgresStorage) GetByUser(ctx context.Context, userID string) ([]stora
 	return savedURLs, nil
 }
 
+func (s *PostgresStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
+	b := &pgx.Batch{}
+	for _, task := range taskSlice {
+		b.Queue(`UPDATE urlsTable SET is_deleted = true WHERE short_url = $1 AND user_id = $2`, task.URL, task.UserID)
+	}
+
+	br := s.db.SendBatch(ctx, b)
+	defer br.Close()
+
+	for i := 0; i < len(taskSlice); i++ {
+		_, err := br.Exec()
+		if err != nil {
+			s.logger.Sugar().Errorf("error while deliting %v", err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 func (s *PostgresStorage) migration(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
 		ALTER TABLE urlsTable
-		ADD COLUMN IF NOT EXISTS user_id VARCHAR(32)
+		ADD COLUMN IF NOT EXISTS user_id VARCHAR(32) NOT NULL
 	`)
+	if err != nil {
+		return err
+
+	}
+	return s.secondMigration(ctx)
+}
+
+func (s *PostgresStorage) secondMigration(ctx context.Context) error {
+	_, err := s.db.Exec(ctx, `
+	ALTER TABLE urlsTable
+	ADD COLUMN IF NOT EXISTS is_deleted bool DEFAULT false
+`)
 	return err
 }

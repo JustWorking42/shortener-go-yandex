@@ -2,6 +2,7 @@ package cookie
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -72,7 +73,7 @@ func getUserID(ctx context.Context, tokenString string) (string, error) {
 		return userID, nil
 	}
 
-	return "", nil
+	return "", errors.New("Unauthorized")
 }
 
 func generateCookies(userID string) (string, error) {

@@ -30,3 +30,8 @@ func NewResponseShortenerURLBatch(id string, url string) *ResponseShortenerURLBa
 		ID:  id,
 	}
 }
+
+type DeleteTask struct {
+	URL    string
+	UserID string
+}
