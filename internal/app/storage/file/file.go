@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
@@ -157,6 +158,40 @@ func (fs *FileStorage) Get(ctx context.Context, key string) (storage.SavedURL, e
 	}
 
 	return savedURL, errors.New("Nothing")
+}
+
+func (fs *FileStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.File == nil {
+		return errors.New("file does not open")
+	}
+
+	_, err := fs.File.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+
+	scanner := bufio.NewScanner(fs.File)
+
+	var buffer []storage.SavedURL
+
+	for scanner.Scan() {
+		for _, task := range taskSlice {
+			var savedURL storage.SavedURL
+			json.Unmarshal(scanner.Bytes(), &savedURL)
+			if savedURL.ShortURL == task.URL && savedURL.UserID == task.UserID {
+				savedURL.IsDeleted = true
+			}
+			buffer = append(buffer, savedURL)
+
+		}
+	}
+	if err := fs.Clean(ctx); err != nil {
+		return err
+	}
+	return fs.SaveArray(ctx, buffer)
 }
 
 func (fs *FileStorage) Clean(ctx context.Context) error {

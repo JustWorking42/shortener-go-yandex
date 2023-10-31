@@ -39,6 +39,8 @@ func main() {
 		},
 	}
 
+	app.DeleteManager.SubcribeOnTask(mainContext)
+
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			app.Logger.Sugar().Fatalf("Server closed: %v err", err)

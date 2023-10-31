@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
@@ -24,6 +25,18 @@ func (m *MemoryStorage) Init(ctx context.Context) error {
 func (m *MemoryStorage) Ping(ctx context.Context) error {
 	if m.store == nil {
 		return errors.New("MemoryStorage not initialized")
+	}
+	return nil
+}
+
+func (m *MemoryStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
+
+	for i, item := range m.store {
+		for _, task := range taskSlice {
+			if item.ShortURL == task.URL && item.UserID == task.UserID {
+				m.store[i].IsDeleted = true
+			}
+		}
 	}
 	return nil
 }

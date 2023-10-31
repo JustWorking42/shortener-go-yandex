@@ -50,6 +50,10 @@ func Webhook(app *app.App) *chi.Mux {
 		handleGetUserURLs(app, w, r)
 	}
 
+	handleDelete := func(w http.ResponseWriter, r *http.Request) {
+		handleDeleteURLs(app, w, r)
+	}
+
 	router.Get("/{id}", combinedMiddleware(app, handleGetRequest))
 
 	router.Post("/", combinedMiddleware(app, handlePostRequest))
@@ -61,6 +65,8 @@ func Webhook(app *app.App) *chi.Mux {
 	router.Post("/api/shorten/batch", combinedMiddleware(app, handleShortenPostArray))
 
 	router.Get("/api/user/urls", combinedMiddleware(app, handleGetUserURLs))
+
+	router.Delete("/api/user/urls", combinedMiddleware(app, handleDelete))
 
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
@@ -130,6 +136,11 @@ func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, incorectData, http.StatusBadRequest)
+		return
+	}
+
+	if savedURL.IsDeleted {
+		w.WriteHeader(http.StatusGone)
 		return
 	}
 
@@ -242,7 +253,7 @@ func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
 	err := app.Storage.Ping(r.Context())
 	if err != nil {
 		app.Logger.Sugar().Error(err)
-		sendError(w, err, "", http.StatusInternalServerError)
+		sendError(w, err, "", http.StatusBadRequest)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -272,7 +283,7 @@ func handleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 	urls, err := app.Storage.GetByUser(r.Context(), userID)
 	if err != nil {
 		app.Logger.Sugar().Error(err)
-		sendError(w, err, "Failed to get URLs", http.StatusInternalServerError)
+		sendError(w, err, "Failed to get URLs", http.StatusBadRequest)
 		return
 	}
 
@@ -292,6 +303,24 @@ func handleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		app.Logger.Sugar().Error(err)
-		sendError(w, err, "Failed to encode response", http.StatusInternalServerError)
+		sendError(w, err, "Failed to encode response", http.StatusBadRequest)
 	}
+}
+
+func handleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
+	userID := r.Context().Value(cookie.UserID("UserID")).(string)
+	var urls []string
+	err := json.NewDecoder(r.Body).Decode(&urls)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	for _, url := range urls {
+		app.DeleteManager.TaskChan <- models.DeleteTask{
+			UserID: userID,
+			URL:    url,
+		}
+	}
+
+	w.WriteHeader(http.StatusAccepted)
 }
