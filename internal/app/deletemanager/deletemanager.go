@@ -2,6 +2,7 @@ package deletemanager
 
 import (
 	"context"
+	"sync"
 	"time"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
@@ -22,9 +23,12 @@ func NewDeleteManager(storage storage.Storage) *DeleteManager {
 	}
 }
 
-func (m *DeleteManager) SubcribeOnTask(ctx context.Context) error {
+func (m *DeleteManager) SubcribeOnTask(ctx context.Context) (*sync.WaitGroup, chan error) {
 	ticker := time.NewTicker(time.Second * 5)
 	var taskSlice []models.DeleteTask
+	var wg sync.WaitGroup
+	errChan := make(chan error)
+	wg.Add(1)
 	go func() {
 		for {
 			select {
@@ -36,16 +40,24 @@ func (m *DeleteManager) SubcribeOnTask(ctx context.Context) error {
 				if len(taskSlice) > 0 {
 					err := m.Storage.Delete(ctx, taskSlice)
 					if err != nil {
-						m.Logger.Sugar().Errorf("delete err numbers of elements: %d", len(taskSlice))
+						errChan <- err
 						continue
 					}
 					taskSlice = nil
 				}
 
 			case <-ctx.Done():
+				if len(taskSlice) > 0 {
+					err := m.Storage.Delete(context.Background(), taskSlice)
+					if err != nil {
+						errChan <- err
+					}
+				}
+				wg.Done()
+				close(errChan)
 				return
 			}
 		}
 	}()
-	return nil
+	return &wg, errChan
 }

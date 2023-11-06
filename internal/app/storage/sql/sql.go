@@ -159,13 +159,19 @@ func (s *PostgresStorage) GetByUser(ctx context.Context, userID string) ([]stora
 }
 
 func (s *PostgresStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		s.logger.Sugar().Errorf("error while starting transaction %v", err)
+		return err
+	}
+	defer tx.Rollback(ctx)
+
 	b := &pgx.Batch{}
 	for _, task := range taskSlice {
 		b.Queue(`UPDATE urlsTable SET is_deleted = true WHERE short_url = $1 AND user_id = $2`, task.URL, task.UserID)
 	}
 
-	br := s.db.SendBatch(ctx, b)
-	defer br.Close()
+	br := tx.SendBatch(ctx, b)
 
 	for i := 0; i < len(taskSlice); i++ {
 		_, err := br.Exec()
@@ -174,7 +180,11 @@ func (s *PostgresStorage) Delete(ctx context.Context, taskSlice []models.DeleteT
 			return err
 		}
 	}
-
+	br.Close()
+	err = tx.Commit(ctx)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -39,7 +39,11 @@ func main() {
 		},
 	}
 
-	app.DeleteManager.SubcribeOnTask(mainContext)
+	wg, errChan := app.DeleteManager.SubcribeOnTask(mainContext)
+	go func() {
+		defer close(app.DeleteManager.TaskChan)
+		wg.Wait()
+	}()
 
 	go func() {
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -51,15 +55,20 @@ func main() {
 
 	signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
 
-	<-exit
-	app.Logger.Sync()
-	app.Logger.Sugar().Info("Shutting down server")
+	select {
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
-		app.Logger.Sugar().Fatal("Server forced to shutdown:", err)
+	case err := <-errChan:
+		app.Logger.Sugar().Fatalf("Delete url err: %v", err)
+
+	case <-exit:
+		app.Logger.Sync()
+		app.Logger.Sugar().Info("Shutting down server")
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := server.Shutdown(ctx); err != nil {
+			app.Logger.Sugar().Fatal("Server forced to shutdown:", err)
+		}
+		app.Logger.Sugar().Info("Server exiting")
 	}
 
-	app.Logger.Sugar().Info("Server exiting")
 }
