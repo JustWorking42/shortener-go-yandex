@@ -18,7 +18,7 @@ func (um *UserManager) GenerateUserID(ctx context.Context) (string, error) {
 		return "", err
 	}
 
-	return string(userID), nil
+	return userID, nil
 }
 
 func generate(ctx context.Context, storage storage.Storage) (string, error) {
