@@ -1,3 +1,4 @@
+// Package memory provides functionality for storing and retrieving URLs in memory.
 package memory
 
 import (
@@ -9,11 +10,13 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
+// MemoryStorage represents a memory storage for URLs.
 type MemoryStorage struct {
 	store []storage.SavedURL
 	mu    sync.Mutex
 }
 
+// Init initializes the memory storage.
 func (m *MemoryStorage) Init(ctx context.Context) error {
 	if m.store != nil {
 		return errors.New("MemoryStorage already initialized")
@@ -22,6 +25,7 @@ func (m *MemoryStorage) Init(ctx context.Context) error {
 	return nil
 }
 
+// Ping checks if the memory storage is initialized.
 func (m *MemoryStorage) Ping(ctx context.Context) error {
 	if m.store == nil {
 		return errors.New("MemoryStorage not initialized")
@@ -29,6 +33,7 @@ func (m *MemoryStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
+// Delete deletes a URL from the memory storage.
 func (m *MemoryStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
 
 	for i, item := range m.store {
@@ -41,6 +46,8 @@ func (m *MemoryStorage) Delete(ctx context.Context, taskSlice []models.DeleteTas
 	return nil
 }
 
+// Save saves a URL to the memory storage.
+// It returns the short URL and an error if there was a conflict.
 func (m *MemoryStorage) Save(ctx context.Context, savedURL storage.SavedURL) (string, error) {
 	if m.store == nil {
 		return "", errors.New("MemoryStorage not initialized")
@@ -58,6 +65,7 @@ func (m *MemoryStorage) Save(ctx context.Context, savedURL storage.SavedURL) (st
 	return "", nil
 }
 
+// SaveArray saves an array of URLs to the memory storage.
 func (m *MemoryStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
 	if m.store == nil {
 		return errors.New("MemoryStorage not initialized")
@@ -69,6 +77,7 @@ func (m *MemoryStorage) SaveArray(ctx context.Context, savedUrls []storage.Saved
 	return nil
 }
 
+// Get gets a URL from the memory storage by its short URL.
 func (m *MemoryStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	if m.store == nil {
 		return storage.SavedURL{}, errors.New("MemoryStorage not initialized")
@@ -86,6 +95,7 @@ func (m *MemoryStorage) Get(ctx context.Context, key string) (storage.SavedURL, 
 	return storage.SavedURL{}, errors.New("URL not found")
 }
 
+// Clean cleans the memory storage.
 func (m *MemoryStorage) Clean(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -93,6 +103,7 @@ func (m *MemoryStorage) Clean(ctx context.Context) error {
 	return nil
 }
 
+// IsUserIDExists checks if a user ID exists in the memory storage.
 func (m *MemoryStorage) IsUserIDExists(ctx context.Context, userID string) (bool, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -108,10 +119,12 @@ func (m *MemoryStorage) IsUserIDExists(ctx context.Context, userID string) (bool
 	return false, nil
 }
 
+// Close closes the memory storage.
 func (m *MemoryStorage) Close() error {
 	return nil
 }
 
+// GetByUser gets all URLs associated with a user ID from the memory storage.
 func (m *MemoryStorage) GetByUser(ctx context.Context, userID string) ([]storage.SavedURL, error) {
 	if m.store == nil {
 		return nil, errors.New("MemoryStorage not initialized")

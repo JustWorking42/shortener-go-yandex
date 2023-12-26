@@ -1,3 +1,4 @@
+// Package cookie provides functionality for handling cookies.
 package cookie
 
 import (
@@ -12,14 +13,17 @@ import (
 
 var secretKey = []byte("secret-key")
 
+// UserID is a type alias for string.
 type UserID string
 
+// handleError writes an error message to the HTTP response writer if there is an error.
 func handleError(w http.ResponseWriter, err error) {
 	if err != nil {
 		http.Error(w, "Bad Request", http.StatusBadRequest)
 	}
 }
 
+// CookieCheckMiddleware is a middleware function that checks for a JWT token in the cookie and generate cookie.
 func CookieCheckMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("jwtToken")
@@ -45,6 +49,7 @@ func CookieCheckMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 	}
 }
 
+// OnlyAuthorizedMiddleware is a middleware function that checks if the user is authorized.
 func OnlyAuthorizedMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("jwtToken")
@@ -62,6 +67,7 @@ func OnlyAuthorizedMiddleware(app *app.App, next http.Handler) http.HandlerFunc 
 	}
 }
 
+// getUserID extracts the user ID from the JWT token.
 func getUserID(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
@@ -82,6 +88,7 @@ func getUserID(tokenString string) (string, error) {
 	return "", errors.New("Unauthorized")
 }
 
+// generateToken generates a JWT token for the given user ID.
 func generateToken(userID string) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"userID": userID,
@@ -95,8 +102,8 @@ func generateToken(userID string) (string, error) {
 	return tokenString, nil
 }
 
+// createCookie creates a new cookie with the JWT token.
 func createCookie(app *app.App, userID string, ctx context.Context) (*http.Cookie, error) {
-
 	jwtToken, err := generateToken(userID)
 	if err != nil {
 		return nil, errors.New("BadRequest")
