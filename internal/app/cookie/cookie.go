@@ -39,7 +39,7 @@ func CookieCheckMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 			http.SetCookie(w, cookie)
 		} else {
 			jwtToken := cookie.Value
-			userID, err = getUserID(r.Context(), jwtToken)
+			userID, err = getUserID(jwtToken)
 			if err != nil {
 				http.Error(w, "Unauthorized", http.StatusUnauthorized)
 				return
@@ -51,7 +51,7 @@ func CookieCheckMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 	}
 }
 
-func getUserID(ctx context.Context, tokenString string) (string, error) {
+func getUserID(tokenString string) (string, error) {
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
