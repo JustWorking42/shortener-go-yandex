@@ -16,6 +16,7 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 )
 
 const (
@@ -25,6 +26,8 @@ const (
 func Webhook(app *app.App) *chi.Mux {
 
 	router := chi.NewRouter()
+
+	router.Use(middleware.Compress(5, "text/html", "text/plain", "application/json"))
 
 	handleGetRequest := func(w http.ResponseWriter, r *http.Request) {
 		handleGetRequest(app, w, r)
@@ -269,7 +272,7 @@ func combinedMiddleware(app *app.App, h http.HandlerFunc) http.HandlerFunc {
 			app.Logger,
 			logger.ResponseLogging(
 				app.Logger,
-				compression.GzipResponseMiddleware(h),
+				h,
 			),
 		),
 	),

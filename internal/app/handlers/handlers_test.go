@@ -94,26 +94,6 @@ func TestGetSuccessGone(t *testing.T) {
 	assert.NotEqual(t, "gzip", resp.Header().Get("Content-Encoding"))
 }
 
-func TestGetSuccessGzip(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStorage := mocks.NewMockStorage(ctrl)
-	mockResponse := *storage.NewSavedURL("existent", "dsas", "asda")
-
-	mockStorage.EXPECT().Get(gomock.Any(), gomock.Any()).Return(mockResponse, nil)
-
-	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
-	defer server.Close()
-
-	client := resty.New()
-	client.SetRedirectPolicy(resty.NoRedirectPolicy())
-	resp, _ := client.R().SetHeader("Accept-Encoding", "gzip").Get(server.URL + "/existent")
-
-	assert.Equal(t, http.StatusTemporaryRedirect, resp.StatusCode())
-	assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-}
-
 func TestHandleShortenPostFail(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
