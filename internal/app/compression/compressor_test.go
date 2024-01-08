@@ -12,28 +12,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestGzipResponseMiddleware(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("test handler"))
-	})
-
-	gzipHandler := GzipResponseMiddleware(handler)
-
-	server := httptest.NewServer(gzipHandler)
-	defer server.Close()
-
-	client := resty.New()
-	resp, err := client.R().
-		SetHeader("Accept-Encoding", "gzip").
-		Get(server.URL)
-
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	assert.Equal(t, http.StatusOK, resp.StatusCode())
-	assert.Equal(t, "test handler", resp.String())
-	assert.Equal(t, "gzip", resp.Header().Get("Content-Encoding"))
-}
-
 func TestGzipRequestMiddleware(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -69,26 +47,6 @@ func TestGzipRequestMiddleware(t *testing.T) {
 	assert.Equal(t, "test request body", resp.String())
 }
 
-func TestGzipResponseMiddleware_NoGzip(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("test handler"))
-	})
-
-	gzipHandler := GzipResponseMiddleware(handler)
-
-	server := httptest.NewServer(gzipHandler)
-	defer server.Close()
-
-	client := resty.New()
-	resp, err := client.R().Get(server.URL)
-
-	assert.NoError(t, err)
-	assert.NotNil(t, resp)
-	assert.Equal(t, "test handler", resp.String())
-	assert.Equal(t, http.StatusOK, resp.StatusCode())
-	assert.NotEqual(t, "gzip", resp.Header().Get("Content-Encoding"))
-}
-
 func TestGzipRequestMiddleware_NoGzip(t *testing.T) {
 	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, err := io.ReadAll(r.Body)
@@ -112,4 +70,30 @@ func TestGzipRequestMiddleware_NoGzip(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, resp)
 	assert.Equal(t, "test request body", resp.String())
+}
+
+func BenchmarkGzipRequestMiddleware(b *testing.B) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.ReadAll(r.Body)
+	})
+
+	gzipHandler := GzipRequestMiddleware(handler)
+
+	server := httptest.NewServer(gzipHandler)
+	defer server.Close()
+
+	client := resty.New()
+	b.ResetTimer()
+
+	for i := 0; i < b.N; i++ {
+		var buffer bytes.Buffer
+		gz := gzip.NewWriter(&buffer)
+		_, _ = gz.Write([]byte("test request body"))
+		_ = gz.Close()
+
+		client.R().
+			SetBody(buffer.Bytes()).
+			SetHeader("Content-Encoding", "gzip").
+			Post(server.URL)
+	}
 }

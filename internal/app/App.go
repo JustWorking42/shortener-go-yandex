@@ -1,3 +1,4 @@
+// Package app provides the main application structure and related functionalities.
 package app
 
 import (
@@ -15,6 +16,8 @@ import (
 	"go.uber.org/zap"
 )
 
+// App represents the main application structure.
+// It includes fields for storage, logger, context, user manager, delete manager, and redirect host.
 type App struct {
 	Storage       storage.Storage
 	Logger        *zap.Logger
@@ -24,6 +27,7 @@ type App struct {
 	RedirectHost  string
 }
 
+// CreateApp creates a new instance of the App object.
 func CreateApp(ctx context.Context, conf configs.Config) (*App, error) {
 
 	logger, err := logger.CreateLogger(conf.LogLevel)
@@ -51,6 +55,7 @@ func CreateApp(ctx context.Context, conf configs.Config) (*App, error) {
 	}, nil
 }
 
+// createStorage initializes the storage based on the configuration.
 func createStorage(ctx context.Context, conf configs.Config, logger *zap.Logger) (storage.Storage, error) {
 	var storage storage.Storage
 	var err error

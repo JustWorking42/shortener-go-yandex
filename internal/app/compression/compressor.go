@@ -1,28 +1,13 @@
+// Package compression provides functionality for compressing HTTP requests.
 package compression
 
 import (
 	"compress/gzip"
 	"io"
 	"net/http"
-	"strings"
 )
 
-func GzipResponseMiddleware(h http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			h(w, r)
-			return
-		}
-
-		w.Header().Set("Content-Encoding", "gzip")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
-
-		gzw := gzipResponseWriter{Writer: gz, ResponseWriter: w}
-		h(gzw, r)
-	}
-}
-
+// GzipRequestMiddleware is a middleware function that decompresses gzipped HTTP requests.
 func GzipRequestMiddleware(h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Content-Encoding") != "gzip" {
@@ -42,11 +27,13 @@ func GzipRequestMiddleware(h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// gzipResponseWriter is a custom response writer that supports gzip compression.
 type gzipResponseWriter struct {
 	io.Writer
 	http.ResponseWriter
 }
 
+// Write writes the data to the underlying gzip writer.
 func (gzw gzipResponseWriter) Write(b []byte) (int, error) {
 	return gzw.Writer.Write(b)
 }
