@@ -10,12 +10,17 @@ import (
 	"syscall"
 	"time"
 
+	_ "net/http/pprof"
+
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/handlers"
 )
 
 func main() {
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 	mainContext, MainCancel := context.WithCancel(context.Background())
 	defer MainCancel()
 
