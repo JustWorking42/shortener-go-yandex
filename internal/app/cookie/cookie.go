@@ -14,40 +14,51 @@ var secretKey = []byte("secret-key")
 
 type UserID string
 
+func handleError(w http.ResponseWriter, err error) {
+	if err != nil {
+		http.Error(w, "Bad Request", http.StatusBadRequest)
+	}
+}
+
 func CookieCheckMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		cookie, err := r.Cookie("jwtToken")
-
 		var userID string
-		if errors.Is(err, http.ErrNoCookie) {
+		if errors.Is(err, http.ErrNoCookie) || err != nil {
 			userID, err = app.UserManager.GenerateUserID(r.Context())
-			if err != nil {
-				http.Error(w, "Bad Request", http.StatusBadRequest)
-				return
-			}
-
-			jwtToken, err := generateToken(userID)
-			if err != nil {
-				http.Error(w, "Bad Request", http.StatusBadRequest)
-				return
-			}
-
-			cookie := &http.Cookie{
-				Name:  "jwtToken",
-				Value: jwtToken,
-			}
-			http.SetCookie(w, cookie)
+			handleError(w, err)
+			cookie, err = createCookie(app, userID, r.Context())
+			handleError(w, err)
 		} else {
 			jwtToken := cookie.Value
 			userID, err = getUserID(jwtToken)
 			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
-				return
+				userID, err = app.UserManager.GenerateUserID(r.Context())
+				handleError(w, err)
+				cookie, err = createCookie(app, userID, r.Context())
+				handleError(w, err)
 			}
 		}
-
+		http.SetCookie(w, cookie)
 		ctx := context.WithValue(r.Context(), UserID("UserID"), userID)
 		next.ServeHTTP(w, r.WithContext(ctx))
+	}
+}
+
+func OnlyAuthorizedMiddleware(app *app.App, next http.Handler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("jwtToken")
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		jwtToken := cookie.Value
+		_, err = getUserID(jwtToken)
+		if err != nil {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
 	}
 }
 
@@ -82,4 +93,18 @@ func generateToken(userID string) (string, error) {
 	}
 
 	return tokenString, nil
+}
+
+func createCookie(app *app.App, userID string, ctx context.Context) (*http.Cookie, error) {
+
+	jwtToken, err := generateToken(userID)
+	if err != nil {
+		return nil, errors.New("BadRequest")
+	}
+
+	cookie := &http.Cookie{
+		Name:  "jwtToken",
+		Value: jwtToken,
+	}
+	return cookie, nil
 }

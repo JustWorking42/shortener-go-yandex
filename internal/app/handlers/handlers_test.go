@@ -345,8 +345,12 @@ func TestHandleGetUserURLsNoContent(t *testing.T) {
 	defer server.Close()
 
 	client := resty.New()
-	resp, _ := client.R().Get(server.URL + "/api/user/urls")
-
+	resp, _ := client.R().
+		SetCookie(&http.Cookie{
+			Name:  "jwtToken",
+			Value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySUQiOiJ1c2VyX2lkIn0.qgwhzie6gvs8BiiUfGSuODdJSr4cOmR7pggYrG3bT78",
+		}).
+		Get(server.URL + "/api/user/urls")
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode())
 }
 
@@ -359,7 +363,7 @@ func TestHandleGetUserURLsHasContent(t *testing.T) {
 		{
 			OriginalURL: "https://valid.com",
 			ShortURL:    "shortURL",
-			UserID:      "userID",
+			UserID:      "user_id",
 		},
 	}, nil)
 
@@ -367,7 +371,12 @@ func TestHandleGetUserURLsHasContent(t *testing.T) {
 	defer server.Close()
 
 	client := resty.New()
-	resp, _ := client.R().Get(server.URL + "/api/user/urls")
+	resp, _ := client.R().
+		SetCookie(&http.Cookie{
+			Name:  "jwtToken",
+			Value: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySUQiOiJ1c2VyX2lkIn0.qgwhzie6gvs8BiiUfGSuODdJSr4cOmR7pggYrG3bT78",
+		}).
+		Get(server.URL + "/api/user/urls")
 
 	assert.Equal(t, http.StatusOK, resp.StatusCode())
 

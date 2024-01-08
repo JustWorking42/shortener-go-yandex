@@ -67,7 +67,7 @@ func Webhook(app *app.App) *chi.Mux {
 
 	router.Post("/api/shorten/batch", combinedMiddleware(app, handleShortenPostArray))
 
-	router.Get("/api/user/urls", combinedMiddleware(app, handleGetUserURLs))
+	router.Get("/api/user/urls", cookie.OnlyAuthorizedMiddleware(app, combinedMiddleware(app, handleGetUserURLs)))
 
 	router.Delete("/api/user/urls", combinedMiddleware(app, handleDelete))
 
