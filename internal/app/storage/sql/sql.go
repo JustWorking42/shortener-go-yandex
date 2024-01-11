@@ -1,3 +1,4 @@
+// Package sql provides functionality for storing and retrieving URLs in a PostgreSQL database.
 package sql
 
 import (
@@ -10,11 +11,13 @@ import (
 	"go.uber.org/zap"
 )
 
+// PostgresStorage represents a PostgreSQL storage for URLs.
 type PostgresStorage struct {
 	db     *pgxpool.Pool
 	logger *zap.Logger
 }
 
+// NewPostgresStorage creates a new PostgreSQL storage.
 func NewPostgresStorage(ctx context.Context, connString string, logger *zap.Logger) (*PostgresStorage, error) {
 	db, err := pgxpool.New(ctx, connString)
 	if err != nil {
@@ -24,6 +27,7 @@ func NewPostgresStorage(ctx context.Context, connString string, logger *zap.Logg
 	return &PostgresStorage{db: db, logger: logger}, nil
 }
 
+// Init initializes the PostgreSQL storage.
 func (s *PostgresStorage) Init(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS urlsTable (
@@ -45,9 +49,13 @@ func (s *PostgresStorage) Init(ctx context.Context) error {
 	return err
 }
 
+// Ping checks if the PostgreSQL storage is initialized.
 func (s *PostgresStorage) Ping(ctx context.Context) error {
 	return s.db.Ping(ctx)
 }
+
+// Save saves a URL to the PostgreSQL storage.
+// It returns the short URL and an error if there was a conflict.
 func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) (string, error) {
 	sqlRequest := `INSERT INTO urlsTable (short_url, original_url, user_id) VALUES ($1, $2, $3) ON CONFLICT (original_url) DO UPDATE SET original_url = EXCLUDED.original_url RETURNING short_url`
 	row := s.db.QueryRow(ctx, sqlRequest, savedURL.ShortURL, savedURL.OriginalURL, savedURL.UserID)
@@ -63,6 +71,7 @@ func (s *PostgresStorage) Save(ctx context.Context, savedURL storage.SavedURL) (
 	return "", nil
 }
 
+// SaveArray saves an array of URLs to the PostgreSQL storage.
 func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
 	sqlRequest := `INSERT INTO urlsTable (short_url, original_url, user_id)
 	VALUES ($1, $2, $3)
@@ -92,6 +101,7 @@ func (s *PostgresStorage) SaveArray(ctx context.Context, savedUrls []storage.Sav
 	return nil
 }
 
+// Get gets a URL from the PostgreSQL storage by its short URL.
 func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	sqlRequest := `SELECT original_url, is_deleted
 	FROM urlsTable
@@ -109,12 +119,14 @@ func (s *PostgresStorage) Get(ctx context.Context, key string) (storage.SavedURL
 	return storage.SavedURL{ShortURL: key, OriginalURL: originalURL, IsDeleted: isDeleted}, nil
 }
 
+// Clean cleans the PostgreSQL storage.
 func (s *PostgresStorage) Clean(ctx context.Context) error {
 	sqlRequest := `TRUNCATE TABLE urlsTable`
 	_, err := s.db.Exec(ctx, sqlRequest)
 	return err
 }
 
+// Close closes the PostgreSQL storage.
 func (s *PostgresStorage) Close() error {
 	if s.db != nil {
 		s.db.Close()
@@ -122,6 +134,7 @@ func (s *PostgresStorage) Close() error {
 	return nil
 }
 
+// IsUserIDExists checks if a user ID exists in the PostgreSQL storage.
 func (s *PostgresStorage) IsUserIDExists(ctx context.Context, userID string) (bool, error) {
 	sqlRequest := `SELECT EXISTS(SELECT 1 FROM urlsTable WHERE user_id=$1)`
 	row := s.db.QueryRow(ctx, sqlRequest, userID)
@@ -134,6 +147,7 @@ func (s *PostgresStorage) IsUserIDExists(ctx context.Context, userID string) (bo
 	return exists, nil
 }
 
+// GetByUser gets all URLs associated with a user ID from the PostgreSQL storage.
 func (s *PostgresStorage) GetByUser(ctx context.Context, userID string) ([]storage.SavedURL, error) {
 	rows, err := s.db.Query(ctx, "SELECT * FROM urlsTable WHERE user_id=$1", userID)
 	if err != nil {
@@ -158,6 +172,7 @@ func (s *PostgresStorage) GetByUser(ctx context.Context, userID string) ([]stora
 	return savedURLs, nil
 }
 
+// Delete deletes a URL from the PostgreSQL storage.
 func (s *PostgresStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -188,6 +203,8 @@ func (s *PostgresStorage) Delete(ctx context.Context, taskSlice []models.DeleteT
 	return nil
 }
 
+// migration performs the first migration on the urlsTable in the PostgreSQL database.
+// It adds a user_id column to the table if it doesn't exist, and then calls the secondMigration method.
 func (s *PostgresStorage) migration(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
 		ALTER TABLE urlsTable
@@ -200,6 +217,8 @@ func (s *PostgresStorage) migration(ctx context.Context) error {
 	return s.secondMigration(ctx)
 }
 
+// secondMigration performs the second migration on the urlsTable in the PostgreSQL database.
+// It adds an is_deleted column to the table if it doesn't exist.
 func (s *PostgresStorage) secondMigration(ctx context.Context) error {
 	_, err := s.db.Exec(ctx, `
 	ALTER TABLE urlsTable

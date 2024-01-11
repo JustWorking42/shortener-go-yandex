@@ -1,3 +1,4 @@
+// Package urlgenerator provides functionality for generating short links.
 package urlgenerator
 
 import (
@@ -6,14 +7,17 @@ import (
 )
 
 const (
-	alphabet        = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	// alphabet is the set of characters used to generate short links.
+	alphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+	// shortLinkLength is the length of generated short links.
 	shortLinkLength = 5
 )
 
+// CreateShortLink generates a random short link.
 func CreateShortLink() string {
-	var bufer bytes.Buffer
+	var buffer bytes.Buffer
 	for i := 0; i < shortLinkLength; i++ {
-		bufer.WriteByte(alphabet[rand.Intn(len(alphabet))])
+		buffer.WriteByte(alphabet[rand.Intn(len(alphabet))])
 	}
-	return bufer.String()
+	return buffer.String()
 }

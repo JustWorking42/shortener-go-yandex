@@ -1,3 +1,4 @@
+// Package deletemanager provides functionality for managing deletion tasks.
 package deletemanager
 
 import (
@@ -10,12 +11,14 @@ import (
 	"go.uber.org/zap"
 )
 
+// DeleteManager is responsible for managing deletion tasks and processing them.
 type DeleteManager struct {
 	Storage  storage.Storage
 	TaskChan chan models.DeleteTask
 	Logger   *zap.Logger
 }
 
+// NewDeleteManager creates a new instance of DeleteManager with the provided storage.
 func NewDeleteManager(storage storage.Storage) *DeleteManager {
 	return &DeleteManager{
 		Storage:  storage,
@@ -23,6 +26,7 @@ func NewDeleteManager(storage storage.Storage) *DeleteManager {
 	}
 }
 
+// SubcribeOnTask starts the process of listening for deletion tasks and processing them.
 func (m *DeleteManager) SubcribeOnTask(ctx context.Context) (*sync.WaitGroup, chan error) {
 	ticker := time.NewTicker(time.Second * 5)
 	var taskSlice []models.DeleteTask
@@ -32,7 +36,6 @@ func (m *DeleteManager) SubcribeOnTask(ctx context.Context) (*sync.WaitGroup, ch
 	go func() {
 		for {
 			select {
-
 			case task := <-m.TaskChan:
 				taskSlice = append(taskSlice, task)
 
