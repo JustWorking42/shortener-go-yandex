@@ -1,3 +1,4 @@
+// Package logger provides functionality for logging HTTP requests and responses.
 package logger
 
 import (
@@ -7,6 +8,7 @@ import (
 	"go.uber.org/zap"
 )
 
+// CreateLogger creates a new zap logger with the specified log level.
 func CreateLogger(textLevel string) (*zap.Logger, error) {
 	level, err := zap.ParseAtomicLevel(textLevel)
 	if err != nil {
@@ -23,6 +25,8 @@ func CreateLogger(textLevel string) (*zap.Logger, error) {
 	return logger, nil
 }
 
+// RequestLogging wraps an http handler function with logging functionality.
+// Logs the request URI, method, and duration.
 func RequestLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -36,6 +40,8 @@ func RequestLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// ResponseLogging wraps an http handler function with logging functionality.
+// Logs the response status and size.
 func ResponseLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		responseData := &responseData{}
@@ -51,22 +57,26 @@ func ResponseLogging(logger *zap.Logger, h http.HandlerFunc) http.HandlerFunc {
 	}
 }
 
+// responseData holds the status and size of an HTTP response.
 type responseData struct {
 	status int
 	size   int
 }
 
+// loggingResponseWriter is a custom response writer that logs the response status and size.
 type loggingResponseWriter struct {
 	http.ResponseWriter
 	responseData *responseData
 }
 
+// Write writes the data to the underlying response writer and updates the response size.
 func (r *loggingResponseWriter) Write(b []byte) (int, error) {
 	size, err := r.ResponseWriter.Write(b)
 	r.responseData.size += size
 	return size, err
 }
 
+// WriteHeader writes the header to the underlying response writer and updates the response status.
 func (r *loggingResponseWriter) WriteHeader(statusCode int) {
 	r.ResponseWriter.WriteHeader(statusCode)
 	r.responseData.status = statusCode

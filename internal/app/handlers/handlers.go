@@ -1,3 +1,5 @@
+// Package handlers handles all incoming HTTP requests and routes them to the appropriate handler functions.
+// It uses the chi router for routing and middleware for common tasks like logging and error handling.
 package handlers
 
 import (
@@ -23,6 +25,8 @@ const (
 	incorectData = "Incorrect Data"
 )
 
+// Webhook sets up the HTTP server and defines the routes.
+// It configures the router to use compression middleware for responses with specified content types.
 func Webhook(app *app.App) *chi.Mux {
 
 	router := chi.NewRouter()
@@ -30,31 +34,31 @@ func Webhook(app *app.App) *chi.Mux {
 	router.Use(middleware.Compress(5, "text/html", "text/plain", "application/json"))
 
 	handleGetRequest := func(w http.ResponseWriter, r *http.Request) {
-		handleGetRequest(app, w, r)
+		HandleGetRequest(app, w, r)
 	}
 
 	handlePostRequest := func(w http.ResponseWriter, r *http.Request) {
-		handlePostRequest(app, w, r)
+		HandlePostRequest(app, w, r)
 	}
 
 	handleShortenPost := func(w http.ResponseWriter, r *http.Request) {
-		handleShortenPost(app, w, r)
+		HandleShortenPost(app, w, r)
 	}
 
 	pingDB := func(w http.ResponseWriter, r *http.Request) {
-		pingDB(app, w, r)
+		PingDB(app, w, r)
 	}
 
 	handleShortenPostArray := func(w http.ResponseWriter, r *http.Request) {
-		handleShortenPostArray(app, w, r)
+		HandleShortenPostArray(app, w, r)
 	}
 
 	handleGetUserURLs := func(w http.ResponseWriter, r *http.Request) {
-		handleGetUserURLs(app, w, r)
+		HandleGetUserURLs(app, w, r)
 	}
 
 	handleDelete := func(w http.ResponseWriter, r *http.Request) {
-		handleDeleteURLs(app, w, r)
+		HandleDeleteURLs(app, w, r)
 	}
 
 	router.Get("/{id}", combinedMiddleware(app, handleGetRequest))
@@ -67,7 +71,7 @@ func Webhook(app *app.App) *chi.Mux {
 
 	router.Post("/api/shorten/batch", combinedMiddleware(app, handleShortenPostArray))
 
-	router.Get("/api/user/urls", combinedMiddleware(app, handleGetUserURLs))
+	router.Get("/api/user/urls", cookie.OnlyAuthorizedMiddleware(app, combinedMiddleware(app, handleGetUserURLs)))
 
 	router.Delete("/api/user/urls", combinedMiddleware(app, handleDelete))
 
@@ -80,7 +84,8 @@ func Webhook(app *app.App) *chi.Mux {
 	return router
 }
 
-func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandleShortenPost handles POST requests to "/api/shorten".
+func HandleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 
 	var originalURL models.RequestShotenerURL
@@ -131,7 +136,8 @@ func handleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandleGetRequest handles GET requests to "/{id}".
+func HandleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 	savedURL, err := app.Storage.Get(r.Context(), id)
@@ -151,7 +157,8 @@ func handleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusTemporaryRedirect)
 }
 
-func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandlePostRequest handles POST requests to "/".
+func HandlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 
 	if err := r.ParseForm(); err != nil {
@@ -202,7 +209,8 @@ func handlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte(response))
 }
 
-func handleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandleShortenPostArray handles POST requests to "/api/shorten/batch".
+func HandleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 	var originalURLsSlice []models.RequestShortenerURLBatch
 
@@ -252,7 +260,8 @@ func handleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request
 	}
 }
 
-func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
+// PingDB checks the connection to the database.
+func PingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
 	err := app.Storage.Ping(r.Context())
 	if err != nil {
 		app.Logger.Sugar().Error(err)
@@ -262,10 +271,12 @@ func pingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+// sendError sends an HTTP error response with the given status code and message.
 func sendError(w http.ResponseWriter, err error, message string, statusCode int) {
 	http.Error(w, message, statusCode)
 }
 
+// combinedMiddleware combines several middleware functions into one.
 func combinedMiddleware(app *app.App, h http.HandlerFunc) http.HandlerFunc {
 	return cookie.CookieCheckMiddleware(app, compression.GzipRequestMiddleware(
 		logger.RequestLogging(
@@ -279,7 +290,8 @@ func combinedMiddleware(app *app.App, h http.HandlerFunc) http.HandlerFunc {
 	)
 }
 
-func handleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandleGetUserURLs retrieves all URLs associated with a user.
+func HandleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 
@@ -310,7 +322,8 @@ func handleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func handleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
+// HandleDeleteURLs deletes specified URLs.
+func HandleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 	var urls []string
 	err := json.NewDecoder(r.Body).Decode(&urls)

@@ -1,3 +1,4 @@
+// Package file provides functionality for storing and retrieving URLs in a file.
 package file
 
 import (
@@ -14,12 +15,15 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 )
 
+// FileStorage represents a file storage for URLs.
 type FileStorage struct {
 	FilePath string
 	File     *os.File
 	mu       sync.Mutex
 }
 
+// Init initializes the file storage.
+// It creates the directory if it doesn't exist and opens the file.
 func (fs *FileStorage) Init(ctx context.Context) error {
 	dir := filepath.Dir(fs.FilePath)
 	err := os.MkdirAll(dir, 0755)
@@ -40,6 +44,7 @@ func (fs *FileStorage) Init(ctx context.Context) error {
 	return nil
 }
 
+// isFileExists checks if the file exists.
 func (fs *FileStorage) isFileExists() bool {
 	_, err := os.Stat(fs.FilePath)
 	if err != nil {
@@ -50,6 +55,7 @@ func (fs *FileStorage) isFileExists() bool {
 	return true
 }
 
+// Ping checks if the file is open.
 func (fs *FileStorage) Ping(ctx context.Context) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -64,6 +70,8 @@ func (fs *FileStorage) Ping(ctx context.Context) error {
 	return nil
 }
 
+// Save saves a URL to the file.
+// It returns the short URL and an error if there was a conflict.
 func (fs *FileStorage) Save(ctx context.Context, savedURL storage.SavedURL) (string, error) {
 
 	fs.mu.Lock()
@@ -102,6 +110,7 @@ func (fs *FileStorage) Save(ctx context.Context, savedURL storage.SavedURL) (str
 	return "", writer.Flush()
 }
 
+// SaveArray saves an array of URLs to the file.
 func (fs *FileStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedURL) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -130,6 +139,7 @@ func (fs *FileStorage) SaveArray(ctx context.Context, savedUrls []storage.SavedU
 	return writer.Flush()
 }
 
+// Get gets a URL from the file by its short URL.
 func (fs *FileStorage) Get(ctx context.Context, key string) (storage.SavedURL, error) {
 	var savedURL storage.SavedURL
 	fs.mu.Lock()
@@ -160,6 +170,7 @@ func (fs *FileStorage) Get(ctx context.Context, key string) (storage.SavedURL, e
 	return savedURL, errors.New("Nothing")
 }
 
+// Delete deletes a URL from the file.
 func (fs *FileStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -194,6 +205,7 @@ func (fs *FileStorage) Delete(ctx context.Context, taskSlice []models.DeleteTask
 	return fs.SaveArray(ctx, buffer)
 }
 
+// Clean cleans the file.
 func (fs *FileStorage) Clean(ctx context.Context) error {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -212,6 +224,7 @@ func (fs *FileStorage) Clean(ctx context.Context) error {
 	return nil
 }
 
+// IsUserIDExists checks if a user ID exists in the file.
 func (fs *FileStorage) IsUserIDExists(ctx context.Context, userID string) (bool, error) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -239,6 +252,7 @@ func (fs *FileStorage) IsUserIDExists(ctx context.Context, userID string) (bool,
 	return false, nil
 }
 
+// GetByUser gets all URLs associated with a user ID from the file.
 func (fs *FileStorage) GetByUser(ctx context.Context, userID string) ([]storage.SavedURL, error) {
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
@@ -276,6 +290,7 @@ func (fs *FileStorage) GetByUser(ctx context.Context, userID string) ([]storage.
 	return urls, nil
 }
 
+// Close closes the file.
 func (fs *FileStorage) Close() error {
 	if fs.File != nil {
 		return fs.File.Close()

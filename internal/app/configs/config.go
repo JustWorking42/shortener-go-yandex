@@ -1,3 +1,4 @@
+// Package configs provides functionality for parsing and managing application configurations.
 package configs
 
 import (
@@ -5,6 +6,7 @@ import (
 	"os"
 )
 
+// Config holds the application's configuration.
 type Config struct {
 	ServerAdr       string
 	RedirectHost    string
@@ -13,10 +15,12 @@ type Config struct {
 	DBAddress       string
 }
 
+// IsFileStorageEnabled checks if file storage is enabled.
 func (c *Config) IsFileStorageEnabled() bool {
 	return c.FileStoragePath != ""
 }
 
+// ParseFlags parses command-line flags and environment variables to populate the Config structure.
 func ParseFlags() (*Config, error) {
 	serverConfig := Config{}
 	os.Environ()
@@ -37,7 +41,6 @@ func ParseFlags() (*Config, error) {
 
 	if logLevel := os.Getenv("LOGGER_LEVEL"); logLevel != "" {
 		serverConfig.LogLevel = logLevel
-
 	}
 
 	if fileStoragePath, exist := os.LookupEnv("FILE_STORAGE_PATH"); exist {
