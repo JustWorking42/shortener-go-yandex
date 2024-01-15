@@ -22,5 +22,5 @@ vendor/
 .idea
 .vscode
  
- # TestClient directorie
-/cmd/shortener/client/
+ # Staticlint binary
+/cmd/staticlint/staticlint

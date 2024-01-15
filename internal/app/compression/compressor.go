@@ -3,7 +3,6 @@ package compression
 
 import (
 	"compress/gzip"
-	"io"
 	"net/http"
 )
 
@@ -25,15 +24,4 @@ func GzipRequestMiddleware(h http.HandlerFunc) http.HandlerFunc {
 		r.Body = gz
 		h(w, r)
 	}
-}
-
-// gzipResponseWriter is a custom response writer that supports gzip compression.
-type gzipResponseWriter struct {
-	io.Writer
-	http.ResponseWriter
-}
-
-// Write writes the data to the underlying gzip writer.
-func (gzw gzipResponseWriter) Write(b []byte) (int, error) {
-	return gzw.Writer.Write(b)
 }
