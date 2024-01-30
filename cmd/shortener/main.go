@@ -59,8 +59,12 @@ func main() {
 	}()
 
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			app.Logger.Sugar().Fatalf("Server closed: %v err", err)
+		if config.EnableHTTPS {
+			certFile := config.CertPath + "/cert.pem"
+			keyFile := config.CertPath + "/private.key"
+			log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
+		} else {
+			log.Fatal(server.ListenAndServe())
 		}
 	}()
 

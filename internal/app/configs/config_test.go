@@ -14,6 +14,7 @@ func TestParseFlags(t *testing.T) {
 	os.Setenv("LOGGER_LEVEL", "test_logger_level")
 	os.Setenv("FILE_STORAGE_PATH", "test_file_storage_path")
 	os.Setenv("DATABASE_DSN", "test_database_dsn")
+	os.Setenv("ENABLE_HTTPS", "true")
 
 	config, err := ParseFlags()
 
@@ -23,6 +24,7 @@ func TestParseFlags(t *testing.T) {
 	assert.Equal(t, "test_logger_level", config.LogLevel)
 	assert.Equal(t, "test_file_storage_path", config.FileStoragePath)
 	assert.Equal(t, "test_database_dsn", config.DBAddress)
+	assert.Equal(t, true, config.EnableHTTPS)
 }
 
 func TestIsFileStorageEnabled(t *testing.T) {
