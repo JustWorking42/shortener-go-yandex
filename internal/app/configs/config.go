@@ -4,6 +4,7 @@ package configs
 import (
 	"flag"
 	"os"
+	"strconv"
 )
 
 // Config holds the application's configuration.
@@ -13,6 +14,8 @@ type Config struct {
 	LogLevel        string
 	FileStoragePath string
 	DBAddress       string
+	EnableHTTPS     bool
+	CertPath        string
 }
 
 // IsFileStorageEnabled checks if file storage is enabled.
@@ -24,12 +27,23 @@ func (c *Config) IsFileStorageEnabled() bool {
 func ParseFlags() (*Config, error) {
 	serverConfig := Config{}
 	os.Environ()
-	flag.StringVar(&serverConfig.ServerAdr, "a", ":8080", "")
-	flag.StringVar(&serverConfig.RedirectHost, "b", "http://localhost:8080", "")
-	flag.StringVar(&serverConfig.LogLevel, "ll", "info", "")
-	flag.StringVar(&serverConfig.FileStoragePath, "f", "/tmp/short-url-db.json", "")
-	flag.StringVar(&serverConfig.DBAddress, "d", "", "")
+	flag.StringVar(&serverConfig.ServerAdr, "a", ":8080", "Serer address")
+	flag.StringVar(&serverConfig.RedirectHost, "b", "http://localhost:8080", "Redirection host")
+	flag.StringVar(&serverConfig.LogLevel, "ll", "info", "Loglevel")
+	flag.StringVar(&serverConfig.FileStoragePath, "f", "/tmp/short-url-db.json", "File storage path")
+	flag.StringVar(&serverConfig.DBAddress, "d", "", "DB address")
+	flag.BoolVar(&serverConfig.EnableHTTPS, "s", false, "Enable HTTPS")
+	flag.StringVar(&serverConfig.CertPath, "c", "", "Cert path")
+
 	flag.Parse()
+
+	if certPath := os.Getenv("SSL_CERT_PATH"); certPath != "" {
+		serverConfig.CertPath = certPath
+	}
+
+	if enableHTTPS := os.Getenv("ENABLE_HTTPS"); enableHTTPS != "" {
+		serverConfig.EnableHTTPS, _ = strconv.ParseBool(enableHTTPS)
+	}
 
 	if serverAdress := os.Getenv("SERVER_ADDRESS"); serverAdress != "" {
 		serverConfig.ServerAdr = serverAdress
