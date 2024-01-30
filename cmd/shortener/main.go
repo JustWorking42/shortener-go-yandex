@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -35,7 +36,11 @@ func main() {
 	config, err := configs.ParseFlags()
 
 	if err != nil {
-		log.Fatalf("Parse flags err: %v\n", err)
+		if errors.Is(err, configs.ErrParseConfigJson) {
+			log.Println(err.Error())
+		} else {
+			log.Fatalf("Parse flags err: %v\n", err)
+		}
 	}
 
 	app, err := app.CreateApp(mainContext, *config)
@@ -60,8 +65,8 @@ func main() {
 
 	go func() {
 		if config.EnableHTTPS {
-			certFile := config.CertPath + "/cert.pem"
-			keyFile := config.CertPath + "/private.key"
+			certFile := config.SSLCertPath + string(os.PathSeparator) + "cert.pem"
+			keyFile := config.SSLCertPath + string(os.PathSeparator) + "private.key"
 			log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
 		} else {
 			log.Fatal(server.ListenAndServe())
