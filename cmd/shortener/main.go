@@ -64,12 +64,17 @@ func main() {
 	}()
 
 	go func() {
+		var err error
 		if config.EnableHTTPS {
 			certFile := config.SSLCertPath + string(os.PathSeparator) + "cert.pem"
 			keyFile := config.SSLCertPath + string(os.PathSeparator) + "private.key"
-			log.Fatal(server.ListenAndServeTLS(certFile, keyFile))
+			err = server.ListenAndServeTLS(certFile, keyFile)
 		} else {
-			log.Fatal(server.ListenAndServe())
+			err = server.ListenAndServe()
+		}
+
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			app.Logger.Sugar().Fatalf("Server closed: %v err", err)
 		}
 	}()
 
@@ -78,7 +83,6 @@ func main() {
 	signal.Notify(exit, os.Interrupt, syscall.SIGTERM)
 
 	select {
-
 	case err := <-errChan:
 		app.Logger.Sugar().Fatalf("Delete url err: %v", err)
 
