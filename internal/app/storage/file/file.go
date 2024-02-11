@@ -297,3 +297,47 @@ func (fs *FileStorage) Close() error {
 	}
 	return nil
 }
+
+// GetStats returns returns the number of users and urls in the file storage.
+func (fs *FileStorage) GetStats(ctx context.Context) (storage.Stats, error) {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+
+	if fs.File == nil {
+		return storage.Stats{}, errors.New("file does not open")
+	}
+
+	_, err := fs.File.Seek(0, 0)
+	if err != nil {
+		return storage.Stats{}, err
+	}
+
+	scanner := bufio.NewScanner(fs.File)
+	var usersMap = make(map[string]bool)
+	var urls int
+
+	for scanner.Scan() {
+		var savedURL storage.SavedURL
+		if err := json.Unmarshal(scanner.Bytes(), &savedURL); err != nil {
+			continue
+		}
+		if !savedURL.IsDeleted {
+			urls++
+			usersMap[savedURL.UserID] = true
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		return storage.Stats{}, err
+	}
+
+	var users int
+	for _ = range usersMap {
+		users++
+	}
+
+	return storage.Stats{
+		URLs:  urls,
+		Users: users,
+	}, nil
+}

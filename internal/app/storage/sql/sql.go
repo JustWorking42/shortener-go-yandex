@@ -226,3 +226,18 @@ func (s *PostgresStorage) secondMigration(ctx context.Context) error {
 `)
 	return err
 }
+
+// GetStats returns the number of users and urls in the database.
+func (s *PostgresStorage) GetStats(ctx context.Context) (storage.Stats, error) {
+	var stats storage.Stats
+	err := s.db.QueryRow(ctx, `
+		SELECT COUNT(*) FILTER (WHERE is_deleted = false) AS urls,
+		       COUNT(DISTINCT user_id) AS users
+		FROM urlsTable
+	`).Scan(&stats.URLs, &stats.Users)
+	if err != nil {
+		s.logger.Sugar().Errorf("postgress get stats error: %v", err)
+		return storage.Stats{}, err
+	}
+	return stats, nil
+}

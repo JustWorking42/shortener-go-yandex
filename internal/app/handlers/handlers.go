@@ -10,6 +10,7 @@ import (
 	"net/http"
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
+	accesscontrol "github.com/JustWorking42/shortener-go-yandex/internal/app/accessControl"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/compression"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/cookie"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
@@ -61,6 +62,10 @@ func Webhook(app *app.App) *chi.Mux {
 		HandleDeleteURLs(app, w, r)
 	}
 
+	handleGetStats := func(w http.ResponseWriter, r *http.Request) {
+		HandleGetStats(app, w, r)
+	}
+
 	router.Get("/{id}", combinedMiddleware(app, handleGetRequest))
 
 	router.Post("/", combinedMiddleware(app, handlePostRequest))
@@ -74,6 +79,8 @@ func Webhook(app *app.App) *chi.Mux {
 	router.Get("/api/user/urls", cookie.OnlyAuthorizedMiddleware(app, combinedMiddleware(app, handleGetUserURLs)))
 
 	router.Delete("/api/user/urls", combinedMiddleware(app, handleDelete))
+
+	router.Get("/api/internal/stats", accesscontrol.CidrAccessMiddleware(app, combinedMiddleware(app, handleGetStats)))
 
 	router.MethodNotAllowed(func(w http.ResponseWriter, _ *http.Request) {
 		sendError(w, errors.New("MethodNotAllowed"), incorectData, http.StatusBadRequest)
@@ -339,4 +346,21 @@ func HandleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusAccepted)
+}
+
+// HandleGetStats return statistics of urls and users.
+func HandleGetStats(app *app.App, w http.ResponseWriter, r *http.Request) {
+
+	stats, err := app.Storage.GetStats(r.Context())
+	if err != nil {
+		app.Logger.Sugar().Error(err)
+		sendError(w, err, "Failed to get stats", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(stats); err != nil {
+		app.Logger.Sugar().Error(err)
+		sendError(w, err, "Failed to encode response", http.StatusBadRequest)
+	}
 }

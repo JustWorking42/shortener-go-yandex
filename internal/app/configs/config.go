@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -18,6 +19,7 @@ type Config struct {
 	DBAddress       string `json:"database_dsn"`
 	EnableHTTPS     bool   `json:"enable_https"`
 	SSLCertPath     string `json:"cert_path"`
+	TrustedSubnet   string `json:"trusted_subnet"`
 }
 
 // ErrParseConfigJson is returned when the config file cant be parsed.
@@ -41,29 +43,32 @@ func ParseFlags() (*Config, error) {
 	flag.BoolVar(&serverConfig.EnableHTTPS, "s", false, "Enable HTTPS")
 	flag.StringVar(&serverConfig.SSLCertPath, "cr", "", "Cert path")
 	flag.StringVar(&jsonConfigPath, "c", "", "JSON config")
+	flag.StringVar(&serverConfig.TrustedSubnet, "t", "", "Trusted subnet")
 	flag.Parse()
 
-	if jsonPath := os.Getenv("CONFIG"); jsonPath != "" {
+	if jsonPath, exist := os.LookupEnv("CONFIG"); exist {
 		jsonConfigPath = jsonPath
 	}
 
-	if certPath := os.Getenv("SSL_CERT_PATH"); certPath != "" {
+	if certPath, exist := os.LookupEnv("SSL_CERT_PATH"); exist {
 		serverConfig.SSLCertPath = certPath
 	}
 
-	if enableHTTPS := os.Getenv("ENABLE_HTTPS"); enableHTTPS != "" {
-		serverConfig.EnableHTTPS, _ = strconv.ParseBool(enableHTTPS)
+	if enableHTTPS, exist := os.LookupEnv("ENABLE_HTTPS"); exist {
+		if value, err := strconv.ParseBool(enableHTTPS); err == nil {
+			serverConfig.EnableHTTPS = value
+		}
 	}
 
-	if serverAdress := os.Getenv("SERVER_ADDRESS"); serverAdress != "" {
+	if serverAdress, exist := os.LookupEnv("SERVER_ADDRESS"); exist {
 		serverConfig.ServerAdr = serverAdress
 	}
 
-	if redirectHost := os.Getenv("RUN_ADDR"); redirectHost != "" {
+	if redirectHost, exist := os.LookupEnv("RUN_ADDR"); exist {
 		serverConfig.RedirectHost = redirectHost
 	}
 
-	if logLevel := os.Getenv("LOGGER_LEVEL"); logLevel != "" {
+	if logLevel, exist := os.LookupEnv("LOGGER_LEVEL"); exist {
 		serverConfig.LogLevel = logLevel
 	}
 
@@ -73,6 +78,10 @@ func ParseFlags() (*Config, error) {
 
 	if dbStoragePath, exist := os.LookupEnv("DATABASE_DSN"); exist {
 		serverConfig.DBAddress = dbStoragePath
+	}
+
+	if trustedSubnet, exit := os.LookupEnv("TRUSTED_SUBNET"); exit {
+		serverConfig.TrustedSubnet = trustedSubnet
 	}
 
 	jsonConfig, err := createConfigFromFile(jsonConfigPath)
@@ -89,12 +98,12 @@ func ParseFlags() (*Config, error) {
 func createConfigFromFile(configPath string) (Config, error) {
 	file, err := os.ReadFile(configPath)
 	if err != nil {
-		return Config{}, ErrParseConfigJson
+		return Config{}, fmt.Errorf("%w: unable to read config file: %v", ErrParseConfigJson, err)
 	}
 	var config Config
 	err = json.Unmarshal(file, &config)
 	if err != nil {
-		return Config{}, ErrParseConfigJson
+		return Config{}, fmt.Errorf("%w: unable to unmarshal config file: %v", ErrParseConfigJson, err)
 	}
 
 	return config, nil

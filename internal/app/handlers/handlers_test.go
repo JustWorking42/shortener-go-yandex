@@ -25,6 +25,7 @@ func mockApp(t *testing.T, storage *mocks.MockStorage) *app.App {
 		LogLevel:        "info",
 		FileStoragePath: "/tmp/short-url-db.json",
 		DBAddress:       "",
+		TrustedSubnet:   "127.0.0.1/8",
 	}
 
 	ctx := context.Background()
@@ -407,4 +408,46 @@ func TestHandleDeleteURLs(t *testing.T) {
 	resp, _ := client.R().SetBody(`["url1", "url2"]`).Delete(server.URL + "/api/user/urls")
 
 	assert.Equal(t, http.StatusAccepted, resp.StatusCode())
+}
+
+func TestHandleGetStatsSuccess(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStats := storage.Stats{
+		URLs:  100,
+		Users: 50,
+	}
+	mockStorage.EXPECT().GetStats(gomock.Any()).Return(mockStats, nil)
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetHeader("X-Real-IP", "127.0.0.1").Get(server.URL + "/api/internal/stats")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode())
+
+	var responseStats storage.Stats
+	json.Unmarshal(resp.Body(), &responseStats)
+	assert.Equal(t, mockStats, responseStats)
+}
+
+func TestHandleGetStatsFail(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStorage := mocks.NewMockStorage(ctrl)
+	mockStorage.EXPECT().GetStats(gomock.Any()).Return(storage.Stats{}, errors.New("database error"))
+
+	server := httptest.NewServer(Webhook(mockApp(t, mockStorage)))
+	defer server.Close()
+
+	client := resty.New()
+	resp, err := client.R().SetHeader("X-Real-IP", "127.0.0.1").Get(server.URL + "/api/internal/stats")
+
+	assert.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode())
 }

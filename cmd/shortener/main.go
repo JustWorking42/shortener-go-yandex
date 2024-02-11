@@ -66,8 +66,8 @@ func main() {
 	go func() {
 		var err error
 		if config.EnableHTTPS {
-			certFile := config.SSLCertPath + string(os.PathSeparator) + "cert.pem"
-			keyFile := config.SSLCertPath + string(os.PathSeparator) + "private.key"
+			certFile := fmt.Sprintf("%s%vcert.pem", config.SSLCertPath, os.PathSeparator)
+			keyFile := fmt.Sprintf("%s%vprivate.key", config.SSLCertPath, os.PathSeparator)
 			err = server.ListenAndServeTLS(certFile, keyFile)
 		} else {
 			err = server.ListenAndServe()
