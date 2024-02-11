@@ -39,6 +39,9 @@ type Storage interface {
 	// Clean cleans the storage.
 	Clean(ctx context.Context) error
 
+	// GetStats returns statistics about the storage.
+	GetStats(ctx context.Context) (Stats, error)
+
 	// Close closes the storage.
 	Close() error
 }
@@ -52,6 +55,11 @@ type SavedURL struct {
 	OriginalURL string `json:"originalUrl"`
 	UserID      string `json:"userID"`
 	IsDeleted   bool
+}
+
+type Stats struct {
+	URLs  int `json:"urls"`
+	Users int `json:"users"`
 }
 
 // NewSavedURL creates a new SavedURL instance.

@@ -146,3 +146,32 @@ func (m *MemoryStorage) GetByUser(ctx context.Context, userID string) ([]storage
 
 	return userURLs, nil
 }
+
+// GetStats returns returns the number of users and urls in the memory storage.
+func (m *MemoryStorage) GetStats(ctx context.Context) (storage.Stats, error) {
+	if m.store == nil {
+		return storage.Stats{}, errors.New("MemoryStorage not initialized")
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	var usersMap = make(map[string]bool)
+	var urls int
+
+	for _, item := range m.store {
+		if !item.IsDeleted {
+			urls++
+			usersMap[item.UserID] = true
+		}
+	}
+	var users int
+
+	for _ = range usersMap {
+		users++
+	}
+
+	return storage.Stats{
+		URLs:  urls,
+		Users: users,
+	}, nil
+}

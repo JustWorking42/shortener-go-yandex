@@ -25,6 +25,7 @@ type App struct {
 	UserManager   *usermanager.UserManager
 	DeleteManager *deletemanager.DeleteManager
 	RedirectHost  string
+	TrustedSubnet string
 }
 
 // CreateApp creates a new instance of the App object.
@@ -52,6 +53,7 @@ func CreateApp(ctx context.Context, conf configs.Config) (*App, error) {
 		UserManager:   usermanager,
 		DeleteManager: deletemanager,
 		RedirectHost:  conf.RedirectHost,
+		TrustedSubnet: conf.TrustedSubnet,
 	}, nil
 }
 
