@@ -16,7 +16,6 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
-	"github.com/JustWorking42/shortener-go-yandex/internal/app/urlgenerator"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -96,7 +95,6 @@ func HandleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
 
 	var originalURL models.RequestShotenerURL
-
 	if err := json.NewDecoder(r.Body).Decode(&originalURL); err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -106,32 +104,25 @@ func HandleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	defer r.Body.Close()
 
 	if originalURL.URL == "" {
-		app.Logger.Sugar().Error("Original URL is empty cheack request body")
+		app.Logger.Sugar().Error("Original URL is empty check request body")
 		sendError(w, errors.New("IncorectBody"), incorectData, http.StatusBadRequest)
 		return
 	}
 
-	link := originalURL.URL
-	shortID := urlgenerator.CreateShortLink()
-
-	savedURL := storage.NewSavedURL(shortID, link, userID)
-
-	conflictURL, err := app.Storage.Save(r.Context(), *savedURL)
 	statusCode := http.StatusCreated
 
+	savedURL, err := app.Repository.SaveURL(r.Context(), originalURL.URL, userID)
 	if err != nil {
 		app.Logger.Sugar().Error(err)
-		if ok := errors.Is(err, storage.ErrURLConflict); ok {
+		if savedURL != (storage.SavedURL{}) {
 			statusCode = http.StatusConflict
-			shortID = conflictURL
 		} else {
-			app.Logger.Sugar().Error(err)
 			sendError(w, err, incorectData, http.StatusBadRequest)
 			return
 		}
 	}
 
-	response := models.NewResponseShortURL(fmt.Sprintf("%s/%s", app.RedirectHost, shortID))
+	response := models.NewResponseShortURL(fmt.Sprintf("%s/%s", app.RedirectHost, savedURL.ShortURL))
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
@@ -143,11 +134,9 @@ func HandleShortenPost(app *app.App, w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// HandleGetRequest handles GET requests to "/{id}".
 func HandleGetRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
-
 	id := chi.URLParam(r, "id")
-	savedURL, err := app.Storage.Get(r.Context(), id)
+	savedURL, err := app.Repository.GetURL(r.Context(), id)
 
 	if err != nil {
 		app.Logger.Sugar().Error(err)
@@ -185,31 +174,26 @@ func HandlePostRequest(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 	if len(body) == 0 {
 		app.Logger.Sugar().Error("Original URL is empty cheack request body")
-		sendError(w, errors.New("body lenth is 0"), incorectData, http.StatusBadRequest)
+		sendError(w, errors.New("body length is  0"), incorectData, http.StatusBadRequest)
 		return
 	}
 
 	link := string(body)
-	shortID := urlgenerator.CreateShortLink()
 
-	savedURL := storage.NewSavedURL(shortID, link, userID)
-
-	conflictURL, err := app.Storage.Save(r.Context(), *savedURL)
 	statusCode := http.StatusCreated
 
+	savedURL, err := app.Repository.SaveURL(r.Context(), link, userID)
 	if err != nil {
 		app.Logger.Sugar().Error(err)
-		if ok := errors.Is(err, storage.ErrURLConflict); ok {
+		if savedURL != (storage.SavedURL{}) {
 			statusCode = http.StatusConflict
-			shortID = conflictURL
 		} else {
-			app.Logger.Sugar().Error(err)
 			sendError(w, err, incorectData, http.StatusBadRequest)
 			return
 		}
 	}
 
-	response := fmt.Sprintf("%s/%s", app.RedirectHost, shortID)
+	response := fmt.Sprintf("%s/%s", app.RedirectHost, savedURL.ShortURL)
 
 	w.Header().Set("Content-Type", "text/plain")
 	w.WriteHeader(statusCode)
@@ -229,28 +213,7 @@ func HandleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request
 
 	defer r.Body.Close()
 
-	var shortURLsSlice []models.ResponseShortenerURLBatch
-	var shortURLsSliceSave []storage.SavedURL
-
-	for _, item := range originalURLsSlice {
-		if item.URL == "" {
-			app.Logger.Sugar().Error("Original url is empty check request body")
-			sendError(w, errors.New("IncorectBody"), incorectData, http.StatusBadRequest)
-			return
-		}
-		shortURL := urlgenerator.CreateShortLink()
-
-		shortURLsSlice = append(
-			shortURLsSlice,
-			*models.NewResponseShortenerURLBatch(item.ID, fmt.Sprintf("%s/%s", app.RedirectHost, shortURL)),
-		)
-
-		shortURLsSliceSave = append(shortURLsSliceSave, *storage.NewSavedURL(shortURL, item.URL, userID))
-
-	}
-
-	err := app.Storage.SaveArray(r.Context(), shortURLsSliceSave)
-
+	savedURLsSlice, err := app.Repository.SaveURLArray(r.Context(), originalURLsSlice, userID)
 	if err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, incorectData, http.StatusBadRequest)
@@ -260,16 +223,15 @@ func HandleShortenPostArray(app *app.App, w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 
-	if err := json.NewEncoder(w).Encode(shortURLsSlice); err != nil {
+	if err := json.NewEncoder(w).Encode(savedURLsSlice); err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, incorectData, http.StatusBadRequest)
-		return
 	}
 }
 
 // PingDB checks the connection to the database.
 func PingDB(app *app.App, w http.ResponseWriter, r *http.Request) {
-	err := app.Storage.Ping(r.Context())
+	err := app.Repository.PingDB(r.Context())
 	if err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, "", http.StatusBadRequest)
@@ -299,10 +261,9 @@ func combinedMiddleware(app *app.App, h http.HandlerFunc) http.HandlerFunc {
 
 // HandleGetUserURLs retrieves all URLs associated with a user.
 func HandleGetUserURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
-
 	userID := r.Context().Value(cookie.UserID("UserID")).(string)
+	urls, err := app.Repository.GetUserURLs(r.Context(), userID)
 
-	urls, err := app.Storage.GetByUser(r.Context(), userID)
 	if err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, "Failed to get URLs", http.StatusBadRequest)
@@ -338,11 +299,11 @@ func HandleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	for _, url := range urls {
-		app.DeleteManager.TaskChan <- models.DeleteTask{
-			UserID: userID,
-			URL:    url,
-		}
+	err = app.Repository.DeleteURLs(r.Context(), userID, urls)
+	if err != nil {
+		app.Logger.Sugar().Error(err)
+		sendError(w, err, "Failed to delete URLs", http.StatusBadRequest)
+		return
 	}
 
 	w.WriteHeader(http.StatusAccepted)
@@ -350,8 +311,7 @@ func HandleDeleteURLs(app *app.App, w http.ResponseWriter, r *http.Request) {
 
 // HandleGetStats return statistics of urls and users.
 func HandleGetStats(app *app.App, w http.ResponseWriter, r *http.Request) {
-
-	stats, err := app.Storage.GetStats(r.Context())
+	stats, err := app.Repository.GetStats(r.Context())
 	if err != nil {
 		app.Logger.Sugar().Error(err)
 		sendError(w, err, "Failed to get stats", http.StatusInternalServerError)

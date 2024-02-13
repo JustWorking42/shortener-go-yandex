@@ -20,6 +20,7 @@ type Config struct {
 	EnableHTTPS     bool   `json:"enable_https"`
 	SSLCertPath     string `json:"cert_path"`
 	TrustedSubnet   string `json:"trusted_subnet"`
+	GRPCServerAdr   string `json:"grpc_server_address"`
 }
 
 // ErrParseConfigJson is returned when the config file cant be parsed.
@@ -44,6 +45,7 @@ func ParseFlags() (*Config, error) {
 	flag.StringVar(&serverConfig.SSLCertPath, "cr", "", "Cert path")
 	flag.StringVar(&jsonConfigPath, "c", "", "JSON config")
 	flag.StringVar(&serverConfig.TrustedSubnet, "t", "", "Trusted subnet")
+	flag.StringVar(&serverConfig.GRPCServerAdr, "g", ":50051", "GRPC server address")
 	flag.Parse()
 
 	if jsonPath, exist := os.LookupEnv("CONFIG"); exist {
@@ -82,6 +84,10 @@ func ParseFlags() (*Config, error) {
 
 	if trustedSubnet, exit := os.LookupEnv("TRUSTED_SUBNET"); exit {
 		serverConfig.TrustedSubnet = trustedSubnet
+	}
+
+	if grpcServerAdress, exit := os.LookupEnv("GRPC_SERVER_ADDRESS"); exit {
+		serverConfig.GRPCServerAdr = grpcServerAdress
 	}
 
 	jsonConfig, err := createConfigFromFile(jsonConfigPath)
@@ -131,5 +137,12 @@ func (c *Config) updateConfig(config Config) {
 	}
 	if !c.EnableHTTPS && config.EnableHTTPS {
 		c.EnableHTTPS = config.EnableHTTPS
+	}
+	if c.TrustedSubnet == "" && config.TrustedSubnet != "" {
+		c.TrustedSubnet = config.TrustedSubnet
+
+	}
+	if c.GRPCServerAdr == "" && config.GRPCServerAdr != "" {
+		c.GRPCServerAdr = config.GRPCServerAdr
 	}
 }

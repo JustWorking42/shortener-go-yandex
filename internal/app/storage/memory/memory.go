@@ -166,7 +166,7 @@ func (m *MemoryStorage) GetStats(ctx context.Context) (storage.Stats, error) {
 	}
 	var users int
 
-	for _ = range usersMap {
+	for range usersMap {
 		users++
 	}
 

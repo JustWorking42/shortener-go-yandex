@@ -8,6 +8,7 @@ import (
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/deletemanager"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/logger"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/repository"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/file"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/memory"
@@ -19,11 +20,10 @@ import (
 // App represents the main application structure.
 // It includes fields for storage, logger, context, user manager, delete manager, and redirect host.
 type App struct {
-	Storage       storage.Storage
+	Repository    *repository.Repository
 	Logger        *zap.Logger
 	context       context.Context
 	UserManager   *usermanager.UserManager
-	DeleteManager *deletemanager.DeleteManager
 	RedirectHost  string
 	TrustedSubnet string
 }
@@ -47,11 +47,10 @@ func CreateApp(ctx context.Context, conf configs.Config) (*App, error) {
 	deletemanager := deletemanager.NewDeleteManager(storage)
 
 	return &App{
-		Storage:       storage,
+		Repository:    repository.NewRepository(storage, deletemanager, conf.RedirectHost),
 		Logger:        logger,
 		context:       ctx,
 		UserManager:   usermanager,
-		DeleteManager: deletemanager,
 		RedirectHost:  conf.RedirectHost,
 		TrustedSubnet: conf.TrustedSubnet,
 	}, nil
