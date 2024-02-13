@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package proto;
+
+option go_package = "github.com/JustWorking42/shortener-go-yandex/proto";
+
+import "google/protobuf/empty.proto";
+
+service ShortenerService {
+  rpc ShortUrl (ShortenURLRequest) returns (ShortenURLResponse) {}
+  rpc ShortUrlsBatch (ShortenURLsBatchRequest) returns (ShortenURLsBatchResponse) {}
+  rpc GetURL (GetURLRequest) returns (GetURLResponse) {}
+  rpc GetUserURLs (google.protobuf.Empty) returns (GetUserURLsResponse) {}
+  rpc DeleteURLs (DeleteURLsRequest) returns (google.protobuf.Empty) {}
+  rpc GetStats (google.protobuf.Empty) returns (GetStatsResponse) {}
+  rpc PingDB (google.protobuf.Empty) returns (google.protobuf.Empty) {}
+}
+
+message ShortenURLRequest {
+  string url =  1;
+}
+
+message ShortenURLResponse {
+  string short_url =  1;
+}
+
+message GetURLRequest {
+  string id =  1;
+}
+
+message GetURLResponse {
+  string original_url =  1;
+}
+
+message GetUserURLs {
+  string original_url =  1;
+  string short_url =  2;
+}
+
+message GetUserURLsResponse {
+  repeated GetUserURLs urls =  1;
+}
+
+message DeleteURLsRequest {
+  repeated string urls =  1;
+}
+
+message DeleteURLsResponse {
+  bool success =  1;
+}
+
+message GetStatsResponse {
+  int32 urls_count =  1;
+  int32 users_count =  2;
+}
+
+message ShortenURLsBatchRequest {
+  repeated RequestShortenerURLBatch urls =  1;
+}
+
+message RequestShortenerURLBatch {
+  string id =  1;
+  string url =  2;
+}
+
+message ShortenURLsBatchResponse {
+  repeated ResponseShortenerURLBatch urls =  1;
+}
+
+message ResponseShortenerURLBatch {
+  string id =  1;
+  string short_url =  2;
+}

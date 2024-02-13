@@ -14,9 +14,18 @@ import (
 
 	_ "net/http/pprof"
 
+	"crypto/tls"
+
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
+	accesscontrol "github.com/JustWorking42/shortener-go-yandex/internal/app/accessControl"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/cookie"
+	grpcShortener "github.com/JustWorking42/shortener-go-yandex/internal/app/grpc"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/handlers"
+	"github.com/JustWorking42/shortener-go-yandex/proto"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/reflection"
 )
 
 var (
@@ -47,7 +56,7 @@ func main() {
 	if err != nil {
 		log.Fatalf("App init err: %v err", err)
 	}
-	defer app.Storage.Close()
+	defer app.Repository.CloseDB()
 
 	server := http.Server{
 		Addr:    config.ServerAdr,
@@ -57,9 +66,43 @@ func main() {
 		},
 	}
 
-	wg, errChan := app.DeleteManager.SubcribeOnTask(mainContext)
+	var grpcServer *grpc.Server
+	interceptors := grpc.ChainUnaryInterceptor(
+		func(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+			if info.FullMethod == "/proto.ShortenerService/GetUserURLs" {
+				return cookie.OnlyAuthorizedMiddlewareGRPC(ctx, req, info, handler)
+			}
+			return handler(ctx, req)
+		},
+		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+			if info.FullMethod == "/proto.ShortenerService/GetStats" {
+				return accesscontrol.CidrAccessInterceptor(ctx, req, info, handler, app)
+			}
+			return handler(ctx, req)
+		},
+		func(ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (resp any, err error) {
+			return cookie.MetadataCheckMiddlewareGRPC(ctx, req, info, handler, app)
+		},
+	)
+	if config.EnableHTTPS {
+		certFile := fmt.Sprintf("%s%vcert.pem", config.SSLCertPath, os.PathSeparator)
+		keyFile := fmt.Sprintf("%s%vprivate.key", config.SSLCertPath, os.PathSeparator)
+		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
+		if err != nil {
+			app.Logger.Sugar().Fatalf("failed to load server key pair: %v", err)
+		}
+		creds := credentials.NewServerTLSFromCert(&cert)
+		grpcServer = grpc.NewServer(grpc.Creds(creds), interceptors)
+	} else {
+		grpcServer = grpc.NewServer(interceptors)
+	}
+
+	proto.RegisterShortenerServiceServer(grpcServer, grpcShortener.NewShortenerService(app))
+	reflection.Register(grpcServer)
+
+	wg, errChan := app.Repository.DeleteManager.SubcribeOnTask(mainContext)
 	go func() {
-		defer close(app.DeleteManager.TaskChan)
+		defer close(app.Repository.DeleteManager.TaskChan)
 		wg.Wait()
 	}()
 
@@ -75,6 +118,16 @@ func main() {
 
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
 			app.Logger.Sugar().Fatalf("Server closed: %v err", err)
+		}
+	}()
+
+	go func() {
+		lis, err := net.Listen("tcp", config.GRPCServerAdr)
+		if err != nil {
+			log.Fatalf("failed to listen: %v", err)
+		}
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("failed to serve: %v", err)
 		}
 	}()
 
@@ -94,6 +147,7 @@ func main() {
 		if err := server.Shutdown(ctx); err != nil {
 			app.Logger.Sugar().Fatal("Server forced to shutdown:", err)
 		}
+		grpcServer.GracefulStop()
 		app.Logger.Sugar().Info("Server exiting")
 	}
 

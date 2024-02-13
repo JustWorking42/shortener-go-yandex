@@ -9,6 +9,10 @@ import (
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/golang-jwt/jwt/v4"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 var secretKey = []byte("secret-key")
@@ -65,6 +69,69 @@ func OnlyAuthorizedMiddleware(app *app.App, next http.Handler) http.HandlerFunc 
 		}
 		next.ServeHTTP(w, r)
 	}
+}
+
+// OnlyAuthorizedMiddlewareGRPC is a gRPC interceptor that checks if the user is authorized.
+func OnlyAuthorizedMiddlewareGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "metadata is not provided")
+	}
+
+	values := md.Get("jwtToken")
+	if len(values) == 0 {
+		return nil, status.Errorf(codes.Unauthenticated, "no jwt token provided")
+	}
+
+	jwtToken := values[0]
+	_, err := getUserID(jwtToken)
+	if err != nil {
+		return nil, status.Errorf(codes.Unauthenticated, "invalid jwt token")
+	}
+
+	return handler(ctx, req)
+}
+
+// MetadataCheckMiddlewareGRPC is a gRPC interceptor that checks for a JWT token in the metadata and generates a cookie.
+func MetadataCheckMiddlewareGRPC(ctx context.Context, req interface{}, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler, app *app.App) (interface{}, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return nil, status.Errorf(codes.Unauthenticated, "metadata is not provided")
+	}
+
+	values := md.Get("jwtToken")
+	var userID string
+	var err error
+	if len(values) == 0 {
+		userID, err = app.UserManager.GenerateUserID(ctx)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to generate user ID")
+		}
+		jwtToken, err := generateToken(userID)
+		if err != nil {
+			return nil, status.Errorf(codes.Internal, "failed to generate JWT token")
+		}
+		md.Set("jwtToken", jwtToken)
+	} else {
+		jwtToken := values[0]
+		userID, err = getUserID(jwtToken)
+		if err != nil {
+			userID, err = app.UserManager.GenerateUserID(ctx)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to generate user ID")
+			}
+			jwtToken, err = generateToken(userID)
+			if err != nil {
+				return nil, status.Errorf(codes.Internal, "failed to generate JWT token")
+			}
+			md.Set("jwtToken", jwtToken)
+		}
+	}
+
+	newCtx := metadata.NewOutgoingContext(ctx, md)
+	newCtx = context.WithValue(newCtx, UserID("UserID"), userID)
+	grpc.SendHeader(newCtx, md)
+	return handler(newCtx, req)
 }
 
 // getUserID extracts the user ID from the JWT token.

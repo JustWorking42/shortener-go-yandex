@@ -10,7 +10,9 @@ import (
 
 	"github.com/JustWorking42/shortener-go-yandex/internal/app"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/configs"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/deletemanager"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/models"
+	"github.com/JustWorking42/shortener-go-yandex/internal/app/repository"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage"
 	"github.com/JustWorking42/shortener-go-yandex/internal/app/storage/mocks"
 	"github.com/go-resty/resty/v2"
@@ -33,7 +35,7 @@ func mockApp(t *testing.T, storage *mocks.MockStorage) *app.App {
 	app, err := app.CreateApp(ctx, conf)
 	assert.NoError(t, err)
 
-	app.Storage = storage
+	app.Repository = repository.NewRepository(storage, deletemanager.NewDeleteManager(storage), conf.RedirectHost)
 
 	return app
 }

@@ -80,6 +80,8 @@ func TestCreateConfigFromFile(t *testing.T) {
 		DBAddress:       "test_database_dsn",
 		EnableHTTPS:     true,
 		SSLCertPath:     "test_ssl_cert_path",
+		GRPCServerAdr:   "test_grpc_server_address",
+		TrustedSubnet:   "test_trusted_subnet",
 	}
 	tempFile, err := os.CreateTemp("", "config.json")
 	assert.NoError(t, err)
@@ -100,6 +102,8 @@ var testJson = `
 	"file_storage_path": "test_file_storage_path",
 	"database_dsn": "test_database_dsn",
 	"enable_https": true,
-	"cert_path": "test_ssl_cert_path"
+	"cert_path": "test_ssl_cert_path",
+	"trusted_subnet": "test_trusted_subnet",
+	"grpc_server_address": "test_grpc_server_address"
 }
 `
